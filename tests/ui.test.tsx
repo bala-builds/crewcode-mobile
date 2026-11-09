@@ -303,3 +303,55 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     expect(text()).not.toContain('Backup');
   });
 });
+
+describe('Phase 9 states: drafts and unsaved edits survive a reload', () => {
+  it('composer draft and unsaved code edit are kept locally across remount', async () => {
+    await click('Ram');
+    await clickCard('Habit Tracker');
+    await clickTab('Chat');
+    setVal(document.querySelector('.composer textarea') as HTMLTextAreaElement, 'offline draft');
+    await clickTab('Code');
+    await click('PRD.md');
+    const ed = document.querySelector('textarea.editor') as HTMLTextAreaElement;
+    setVal(ed, '# unsaved local edit');
+    // Remount the whole app the way a reload would (same localStorage, same server state).
+    act(() => root.unmount());
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => { root.render(React.createElement(App, { client: new DirectClient(api) })); });
+    await flush();
+    await clickCard('Habit Tracker');
+    await clickTab('Chat');
+    expect((document.querySelector('.composer textarea') as HTMLTextAreaElement).value).toBe('offline draft');
+    await clickTab('Code');
+    await click('PRD.md');
+    expect((document.querySelector('textarea.editor') as HTMLTextAreaElement).value).toBe('# unsaved local edit');
+    expect(text()).toContain('Unsaved changes');
+  });
+
+  it('a stale edit draft is not restored after the file changed on the server', async () => {
+    await click('Ram');
+    await clickCard('Habit Tracker');
+    await clickTab('Code');
+    await click('PRD.md');
+    setVal(document.querySelector('textarea.editor') as HTMLTextAreaElement, '# stale draft');
+    const list = await api.call({ as: 'u-ram', op: 'listProjects' });
+    if (!list.ok) throw Error();
+    const pid = (list.data as any[])[0].id;
+    const view = await api.call({ as: 'u-ram', op: 'getProject', args: { projectId: pid } });
+    if (!view.ok) throw Error();
+    await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'PRD.md', content: '# server moved on', baseRev: (view.data as any).fileRevs['PRD.md'] } });
+    act(() => root.unmount());
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => { root.render(React.createElement(App, { client: new DirectClient(api) })); });
+    await flush();
+    await clickCard('Habit Tracker');
+    await clickTab('Code');
+    await click('PRD.md');
+    expect((document.querySelector('textarea.editor') as HTMLTextAreaElement).value).toBe('# server moved on');
+    expect(text()).not.toContain('Unsaved changes');
+  });
+});
