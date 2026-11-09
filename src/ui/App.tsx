@@ -63,7 +63,7 @@ export function App({ client }: { client?: ClientData }) {
         return;
       }
       const u = await cli.call({ as: 'u-ram', op: 'listUsers' });
-      if (!cancelled && u.ok) setUsers(u.data);
+      if (!cancelled) { if (u.ok) setUsers(u.data); else setErr(u.error); }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,10 +71,10 @@ export function App({ client }: { client?: ClientData }) {
 
   const refreshFor = async (userId: string, pid?: string | null) => {
     const l = await op(cli, userId, 'listProjects');
-    if (l.ok) setProjects(l.data);
+    if (l.ok) setProjects(l.data); else { setErr(l.error); return null; }
     if (pid) {
       const g = await op(cli, userId, 'getProject', { projectId: pid });
-      if (g.ok) setView(g.data);
+      if (g.ok) setView(g.data); else setErr(g.error);
       return g.ok ? (g.data as ProjectView) : null;
     }
     return null;
@@ -100,6 +100,7 @@ export function App({ client }: { client?: ClientData }) {
   return (
     <div className="app">
       <div className="banner">Test identities only. Not a login. Real sign-in is built last. AI and previews are simulated.</div>
+      {err && screen.name !== 'workspace' && <div style={{ padding: 16 }}><Err text={err} /><button onClick={() => window.location.reload()}>Retry connection</button></div>}
       {screen.name === 'welcome' && <Welcome users={users} pick={(u) => { setMe(u); go({ name: 'home' }); }}
         register={async (name) => {
           const r = await cli.call({ as: 'u-ram', op: 'registerName', args: { name } });
@@ -393,7 +394,7 @@ function PreviewView({ p }: { p: ProjectView }) {
   if (!path) return <div className="screen"><div className="empty">Nothing to preview yet. Run a simulated build for a frontend task first.</div></div>;
   return (
     <div className="screen">
-      <div className="note">Simulated preview of {path}. It runs in a sandbox with scripts only, no access to app data or keys.</div>
+      <div className="note">Simulated preview of {path}. Scripts run in an opaque-origin iframe. Network access is not blocked. This is not a secure runtime for untrusted code.</div>
       {readable.length > 1 && <div className="files">{readable.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => setSel(f)}>{f}</button>)}</div>}
       <iframe title="Preview" sandbox="allow-scripts" srcDoc={p.files[path]} />
     </div>
@@ -480,4 +481,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-}
+      }
