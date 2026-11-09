@@ -17,3 +17,4 @@ Status labels: **Owner-approved** means the user decided it. **Working choice** 
 | O2, O6, O11 | Remaining PRD decisions | O2 belongs to the excluded authentication phase. O6 uses a fixed starter interest list with free text allowed. O11 has no hosted cost because nothing is hosted. | O2 deferred (excluded); O6 working choice; O11 deferred with hosting |
 
 Ground rules kept while building: no paid plan or card required so far; test identities only (not a login); no public deployment before Phase 10 authentication; database changes and CI runs each need explicit approval first.
+- Team codes expire 7 days after creation or regeneration (PRD B5 says codes can expire; the PRD sets no duration, so 7 days is the chosen default). The owner sees the date in the Team sheet and regenerates to reopen joining. Teammates never receive the code or its state.
