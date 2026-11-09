@@ -306,7 +306,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr }: { me: Me; 
         <button className="small" onClick={() => setSheet('skills')} aria-label="Add skills and MCPs">Add</button>
       </div>
       {tab === 'chat' && <ChatView p={p} user={me.id} nameOf={nameOf} msgs={msgs} tasks={tasks} owner={owner} thread={activeThread} setThread={setThread}
-        onAssign={() => actOp('assignTasks', { projectId: pid }, pid)} onBuild={(id: string, force: boolean) => actOp('runBuild', { projectId: pid, taskId: id, forceError: force }, pid)} openCode={(f: string) => { setOpen(f); setTab('code'); }} err={err} />}
+        onAssign={() => actOp('assignTasks', { projectId: pid }, pid)} onBuild={(id: string, force: boolean) => actOp('runBuild', { projectId: pid, taskId: id, forceError: force, prompt: draftMemory.get(pid) ?? '' }, pid)} onCancel={(id: string) => actOp('cancelTaskRun', { projectId: pid, taskId: id }, pid)} openCode={(f: string) => { setOpen(f); setTab('code'); }} err={err} />}
       {tab === 'code' && <CodeView p={p} open={open} setOpen={setOpen} onSave={(path, c, rev) => actOp('saveFile', { projectId: pid, path, content: c, baseRev: rev }, pid)} err={err} clearErr={clearErr} />}
       {tab === 'preview' && <PreviewView p={p} />}
       {tab === 'tasks' && <TasksView p={p} nameOf={nameOf} onStatus={(id, s) => actOp('setTaskStatus', { projectId: pid, taskId: id, status: s }, pid)} err={err} />}
@@ -325,7 +325,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr }: { me: Me; 
   );
 }
 
-function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, onAssign, onBuild, openCode, err }: Record<string, any>) {
+function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, onAssign, onBuild, onCancel, openCode, err }: Record<string, any>) {
   const myTask = !owner ? tasks[0] : tasks.find((t: any) => t.id === thread);
   return (
     <div className="screen">
@@ -358,10 +358,12 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, onAs
       </div>
       {myTask && (
         <div className="row wrap" style={{ marginTop: 12 }}>
-          <button onClick={() => onBuild(myTask.id, false)}>Run simulated build</button>
-          <button onClick={() => onBuild(myTask.id, true)} aria-label="Simulate an error">Simulate error</button>
+          <button onClick={() => onBuild(myTask.id, false)} disabled={myTask.run === 'thinking'}>{myTask.run === 'thinking' ? 'AI thinking...' : 'Run simulated build'}</button>
+          {myTask.run === 'thinking' && <button onClick={() => onCancel(myTask.id)}>Stop</button>}
+          <button onClick={() => onBuild(myTask.id, true)} disabled={myTask.run === 'thinking'} aria-label="Simulate an error">Simulate error</button>
         </div>
       )}
+      {myTask?.run === 'failed' && myTask.runError && <div className="note">{myTask.runError}</div>}
     </div>
   );
 }
@@ -481,4 +483,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-      }
+}
