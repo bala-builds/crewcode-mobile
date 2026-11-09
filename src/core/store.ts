@@ -2,7 +2,7 @@ import type { AppState, Project, ProviderLabel, AiAccess, Task, TaskStatus, Chat
 import { PROVIDER_LABELS } from './types';
 import { canAccess, isOwner, isMember } from './permissions';
 import { findByCode, generateTeamCode } from './teamcode';
-import { defaultContract, integrationCheck, folderFingerprint } from './contract';
+import { defaultContract, integrationCheck, folderFingerprint, reviewFingerprint } from './contract';
 import { planTasks, validatePlan, toTasks, simulateBuild } from './orchestrator';
 import { CATALOG, skillCanAccess } from './skills';
 import { scanForKeys } from './keysafety';
@@ -200,6 +200,7 @@ export function saveFile(state: AppState, projectId: string, userId: string, pat
     }
     p.files[path] = content;
     p.fileRevs[path] = current + 1;
+    reopenAcceptedReviews(p, path);
   });
 }
 
@@ -256,6 +257,7 @@ export function applyTaskRun(
     p.files[path] = content; written.push(path);
     if (!p.fileRevs) p.fileRevs = {};
     p.fileRevs[path] = (p.fileRevs[path] ?? 0) + 1;
+    reopenAcceptedReviews(p, path);
   }
   t.status = 'in_progress'; t.run = 'idle'; delete t.runError;
   push({ authorId: 'ai', taskId, kind: 'ai_build', text: (opts.simulated === false ? '' : 'Simulated build. ') + result.message, files: written });
@@ -309,6 +311,17 @@ export function setTaskStatus(state: AppState, projectId: string, userId: string
  * the owner runs the integration check and accepts it. Re-submitting after requested
  * changes resets the review so the owner checks the fixed source.
  */
+/** A merged task must not silently keep its status: writing into its folder (or changing
+ * the contract the check depended on) reopens the review as submitted for a fresh check. */
+function reopenAcceptedReviews(p: Project, path: string) {
+  for (const t of p.tasks) {
+    if (t.review?.state !== 'accepted') continue;
+    if (path === 'CONTRACT.md' || path.startsWith(t.folder)) {
+      t.review = { state: 'submitted', findings: [], fingerprint: '', at: Date.now() };
+    }
+  }
+}
+
 export function submitTaskForReview(state: AppState, projectId: string, userId: string, taskId: string): Result {
   return mut(state, projectId, (p) => {
     const t = p.tasks.find((x) => x.id === taskId);
@@ -329,7 +342,7 @@ export function runIntegrationReview(state: AppState, projectId: string, userId:
     if (!t.review) return 'The teammate has not submitted this task yet.';
     if (t.review.state === 'accepted') return 'This task is already merged.';
     const findings = integrationCheck(p.files['CONTRACT.md'] ?? '', p.files, t.folder);
-    t.review = { state: findings.length ? 'changes_requested' : 'ready', findings, fingerprint: folderFingerprint(p.fileRevs ?? {}, t.folder), at: Date.now() };
+    t.review = { state: findings.length ? 'changes_requested' : 'ready', findings, fingerprint: reviewFingerprint(p.fileRevs ?? {}, t.folder), at: Date.now() };
   });
 }
 
@@ -346,8 +359,10 @@ export function acceptTaskMerge(state: AppState, projectId: string, userId: stri
     if (!r || r.state === 'submitted') return 'Run the integration check before merging.';
     if (r.state === 'accepted') return 'This task is already merged.';
     if (r.state === 'changes_requested') return 'The integration check reported mismatches. They must be fixed and re-checked first.';
-    if (r.fingerprint !== folderFingerprint(p.fileRevs ?? {}, t.folder)) return 'The folder changed since the last check. Run the integration check again.';
-    t.review = { ...r, state: 'accepted', at: Date.now() };
+    if (r.fingerprint !== reviewFingerprint(p.fileRevs ?? {}, t.folder)) return 'The folder or the contract changed since the last check. Run the integration check again.';
+    const snapshot: Record<string, string> = {};
+    for (const [path, content] of Object.entries(p.files)) if (path.startsWith(t.folder)) snapshot[path] = content;
+    t.review = { ...r, state: 'accepted', at: Date.now(), snapshot };
   });
 }
 
