@@ -23,3 +23,7 @@ Ground rules kept while building: no paid plan or card required so far; test ide
 ## Merge review (PRD F6, acceptance 9)
 
 Work in a task folder is a draft until the assignee submits it and the owner runs the integration check and merges it. A merge is refused while mismatches are open or when the folder changed after the last clean check (stale review). Test default; real merge targets (moving code into a shared tree) come with real storage in Phase 9.
+
+## Tool runtime boundary (Phase 8)
+
+Local tool handlers never run in the app process. Each run spawns a separate Node process under the runtime permission model (node --experimental-permission): filesystem reads outside the runner bundle, all filesystem writes, child processes and worker threads are DENIED BY THE RUNTIME (a probe handler proves this in tests/toolproc.test.ts). Network is NOT runtime-enforced on this Node version: handlers are vetted in-repo code that receives only data strings, and a hostile-handler network guarantee would need an OS-level mechanism (e.g. a network namespace), which is not claimed and not built without infrastructure approval. Genuine MCP servers (separate processes speaking the MCP protocol) are NOT integrated yet; the Docs outline entry is a local MCP-shaped tool, groundwork only.
