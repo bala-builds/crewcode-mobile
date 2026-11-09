@@ -28,7 +28,7 @@ const server = http.createServer((req, res) => {
     if (bytes > MAX_BYTES) { oversized = true; body = ''; reply(413, { ok: false, error: 'Request exceeds 1 MB.' }); return; }
     if (!oversized) body += decoder.write(c);
   });
-  req.on('end', () => {
+  req.on('end', () => { void (async () => {
     if (oversized) return;
     body += decoder.end();
     let input;
@@ -36,7 +36,8 @@ const server = http.createServer((req, res) => {
     if (!input || typeof input !== 'object' || Array.isArray(input) || typeof input.as !== 'string' || typeof input.op !== 'string' || (input.args !== undefined && (!input.args || typeof input.args !== 'object' || Array.isArray(input.args)))) {
       reply(400, { ok: false, error: 'Expected as, op and optional args object.' }); return;
     }
-    try { reply(200, api.call(input)); } catch { reply(400, { ok: false, error: 'Bad request. Check field types.' }); }
+    try { reply(200, await api.callAsync(input)); } catch { reply(400, { ok: false, error: 'Bad request. Check field types.' }); }
+  })().catch(() => reply(500, { ok: false, error: 'Server error.' }));
   });
 });
 server.requestTimeout = 15_000;
