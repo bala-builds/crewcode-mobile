@@ -370,4 +370,41 @@ describe('Phase 9 states: drafts and unsaved edits survive a reload', () => {
     await click('PRD.md');
     expect((document.querySelector('textarea.editor') as HTMLTextAreaElement).value).toBe('# server moved on');
   });
+
+  it('an unresolved conflict survives file navigation until explicit resolution', async () => {
+    await click('Ram');
+    await clickCard('Habit Tracker');
+    await clickTab('Code');
+    await click('PRD.md');
+    setVal(document.querySelector('textarea.editor') as HTMLTextAreaElement, '# my kept draft');
+    const list = await api.call({ as: 'u-ram', op: 'listProjects' });
+    if (!list.ok) throw Error();
+    const pid = (list.data as any[])[0].id;
+    const view = await api.call({ as: 'u-ram', op: 'getProject', args: { projectId: pid } });
+    if (!view.ok) throw Error();
+    await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'PRD.md', content: '# server moved on', baseRev: (view.data as any).fileRevs['PRD.md'] } });
+    act(() => root.unmount());
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => { root.render(React.createElement(App, { client: new DirectClient(api) })); });
+    await flush();
+    await clickCard('Habit Tracker');
+    await clickTab('Code');
+    await click('PRD.md');
+    expect(text()).toContain('changed this file while you were editing');
+    // Navigating to another file hides the panel but must not resolve or drop it.
+    await click('CONTRACT.md');
+    expect(text()).not.toContain('changed this file while you were editing');
+    // Back on the conflicted file: the pending conflict and the draft are still there.
+    await click('PRD.md');
+    expect(text()).toContain('changed this file while you were editing');
+    expect((document.querySelector('textarea.editor') as HTMLTextAreaElement).value).toBe('# my kept draft');
+    // Only an explicit choice clears it.
+    await click('Use their version');
+    await click('CONTRACT.md');
+    await click('PRD.md');
+    expect(text()).not.toContain('changed this file while you were editing');
+    expect((document.querySelector('textarea.editor') as HTMLTextAreaElement).value).toBe('# server moved on');
+  });
 });
