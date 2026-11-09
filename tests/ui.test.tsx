@@ -13,6 +13,7 @@ import { DirectClient } from '../src/ui/client';
 
 let host: HTMLDivElement;
 let root: Root;
+let api: Api;
 
 beforeEach(async () => {
   localStorage.clear();
@@ -20,7 +21,8 @@ beforeEach(async () => {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
-  await act(async () => { root.render(React.createElement(App, { client: new DirectClient(new Api()) })); });
+  api = new Api();
+  await act(async () => { root.render(React.createElement(App, { client: new DirectClient(api) })); });
   await flush();
 });
 
@@ -198,7 +200,8 @@ describe('Phase 3 preview checks (simulated)', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
-    await act(async () => { root.render(React.createElement(App, { client: new DirectClient(new Api()) })); });
+    api = new Api();
+  await act(async () => { root.render(React.createElement(App, { client: new DirectClient(api) })); });
     await flush();
   };
 
@@ -249,5 +252,54 @@ describe('Phase 1 teammate journey and restrictions', () => {
     expect(text()).toContain('Only the owner can change it.');
     await clickTab('Preview');
     expect(text()).toContain('Nothing to preview yet.');
+  });
+});
+
+describe('Phase 8 UI: conflict review and owner backup', () => {
+  it('a conflicting save shows both versions and never overwrites silently', async () => {
+    await click('Ram');
+    await clickCard('Habit Tracker');
+    await clickTab('Code');
+    await click('PRD.md');
+    const ed = document.querySelector('textarea.editor') as HTMLTextAreaElement;
+    setVal(ed, '# my unsaved edit');
+    // Another writer saves a newer revision through the same server state.
+    const list = await api.call({ as: 'u-ram', op: 'listProjects' });
+    if (!list.ok) throw Error();
+    const pid = (list.data as any[])[0].id;
+    const view = await api.call({ as: 'u-ram', op: 'getProject', args: { projectId: pid } });
+    if (!view.ok) throw Error();
+    const rev = (view.data as any).fileRevs['PRD.md'];
+    const other = await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'PRD.md', content: '# their saved version', baseRev: rev } });
+    if (!other.ok) throw Error();
+    await click('Save'); // our stale revision conflicts
+    expect(text()).toContain('changed this file while you were editing');
+    expect(text()).toContain('their saved version'); // their version is shown for review
+    const still = await api.call({ as: 'u-ram', op: 'getProject', args: { projectId: pid } });
+    if (!still.ok) throw Error();
+    expect((still.data as any).files['PRD.md']).toBe('# their saved version'); // nothing overwritten
+    await click('Keep my version');
+    const after = await api.call({ as: 'u-ram', op: 'getProject', args: { projectId: pid } });
+    if (!after.ok) throw Error();
+    expect((after.data as any).files['PRD.md']).toBe('# my unsaved edit'); // explicit choice wins
+    expect(text()).not.toContain('changed this file while you were editing');
+  });
+
+  it('owner sees Export and restore guidance; teammate does not', async () => {
+    await click('Ram');
+    await clickCard('Habit Tracker');
+    await click('Team');
+    expect(text()).toContain('Backup');
+    expect(text()).toContain('conflict loudly');
+    await click('Export');
+    const ta = document.querySelector('textarea[aria-label="Backup JSON"]') as HTMLTextAreaElement;
+    expect(ta.value).toContain('"format": "crewcode-backup"');
+    await click('Close');
+    await click('Back');
+    await click('Switch');
+    await click('Seeta');
+    await clickCard('Habit Tracker');
+    await click('Team');
+    expect(text()).not.toContain('Backup');
   });
 });
