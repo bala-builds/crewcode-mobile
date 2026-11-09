@@ -13,13 +13,15 @@ export type ApiResponse = { ok: true; data?: any } | { ok: false; error: string 
 export type ProjectView = {
   id: string; name: string; role: 'owner' | 'teammate'; ownerKeySharing: boolean;
   teamCode?: string; teamRevoked?: boolean; teamExpiresAt?: number | null; teamMaxJoins?: number | null; teamJoinsUsed?: number; files: Record<string, string>; fileRevs: Record<string, number>;
+  /** Server mutation counter at the time of this view; clients poll getVersion and reload when it moves. */
+  stateVersion?: number;
   tasks: ReturnType<typeof visibleTasks>;
   messages: ReturnType<typeof visibleMessages>; members: ReturnType<typeof visibleMembers>;
   skills: Project['skills'];
   names: Record<string, string>; // display names for member ids; test identities only until Phase 10
 };
 
-export function viewFor(p: Project, userId: string, users: { id: string; name: string }[] = []): ProjectView {
+export function viewFor(p: Project, userId: string, users: { id: string; name: string }[] = [], stateVersion?: number): ProjectView {
   const files: Record<string, string> = {};
   const fileRevs: Record<string, number> = {};
   for (const f of visibleFiles(p, userId)) { files[f] = p.files[f]; fileRevs[f] = p.fileRevs?.[f] ?? 0; }
@@ -32,7 +34,7 @@ export function viewFor(p: Project, userId: string, users: { id: string; name: s
     teamMaxJoins: owner ? p.team.maxJoins ?? null : undefined,
     teamJoinsUsed: owner ? p.team.joinsUsed ?? 0 : undefined,
     files, fileRevs, tasks: visibleTasks(p, userId), messages: visibleMessages(p, userId), members: visibleMembers(p, userId),
-    skills: p.skills,
+    skills: p.skills, stateVersion,
     names: Object.fromEntries(p.members.map((m) => [m.userId, users.find((u) => u.id === m.userId)?.name ?? m.userId])),
   };
 }
@@ -72,7 +74,7 @@ export class Api {
       // commits only if planning was not stopped meanwhile. A stopped plan discards the result.
       const started = S.startPlanning(this.state, args.projectId, u);
       if (!started.ok) return { ok: false, error: started.error };
-      this.state = started.state; this.persist(this.state);
+      this.state = this.stamp(started.state); this.persist(this.state);
       const p = this.state.projects.find((x) => x.id === args.projectId)!;
       const team = p.members.filter((m) => m.role === 'teammate');
       let outcome: S.PlanOutcome;
@@ -83,12 +85,12 @@ export class Api {
       }
       const applied = S.applyPlanning(this.state, args.projectId, outcome);
       if (!applied.ok) return { ok: false, error: applied.error };
-      this.state = applied.state; this.persist(this.state);
+      this.state = this.stamp(applied.state); this.persist(this.state);
       return { ok: true, data: { count: applied.count ?? 0, discarded: !!applied.discarded } };
     }
     const started = S.startTaskRun(this.state, args.projectId, u, args.taskId);
     if (!started.ok) return { ok: false, error: started.error };
-    this.state = started.state; this.persist(this.state);
+    this.state = this.stamp(started.state); this.persist(this.state);
     let result: Awaited<ReturnType<AsyncBuildProvider>>;
     if (args.forceError) {
       result = { ok: false, error: 'Simulated error. Nothing was changed. You can retry.' };
@@ -103,13 +105,19 @@ export class Api {
     }
     const applied = S.applyTaskRun(this.state, args.projectId, args.taskId, result, { simulated: true });
     if (!applied.ok) return { ok: false, error: applied.error };
-    this.state = applied.state; this.persist(this.state);
+    this.state = this.stamp(applied.state); this.persist(this.state);
     return { ok: true, data: { discarded: !!applied.discarded } };
+  }
+
+  /** Every committed state gets a fresh version so other open sessions can see it changed. */
+  private stamp(s: AppState): AppState {
+    s.version = (s.version ?? 0) + 1;
+    return s;
   }
 
   private commit(r: S.Result<any>): ApiResponse {
     if (!r.ok) return { ok: false, error: r.error };
-    this.state = r.state; this.persist(this.state); return { ok: true };
+    this.state = this.stamp(r.state); this.persist(this.state); return { ok: true };
   }
 
   call(req: ApiRequest): ApiResponse {
@@ -125,12 +133,12 @@ export class Api {
         const out = this.commit(r); return out.ok && r.ok ? { ok: true, data: { userId: r.userId } } : out;
       }
       case 'listProjects':
-        return { ok: true, data: st.projects.filter((p) => isMember(p, u)).map((p) => viewFor(p, u, st.users)) };
+        return { ok: true, data: st.projects.filter((p) => isMember(p, u)).map((p) => viewFor(p, u, st.users, st.version)) };
       case 'getProject': {
         const p = st.projects.find((x) => x.id === args.projectId);
         // Same answer for "missing" and "not yours" so ids cannot be probed.
         if (!p || !isMember(p, u)) return { ok: false, error: 'Project not found.' };
-        return { ok: true, data: viewFor(p, u, st.users) };
+        return { ok: true, data: viewFor(p, u, st.users, st.version) };
       }
       case 'createProject': {
         const r = S.createProject(st, u, args.name, args.prd ?? '', args.instructions ?? '');
@@ -181,6 +189,9 @@ export class Api {
         const r = restoreProject(st, u, args.json ?? '');
         const out = this.commit(r); return out.ok && r.ok ? { ok: true, data: { projectId: r.projectId } } : out;
       }
+      case 'getVersion':
+        // A bare mutation counter, no content: any signed-in test identity may read it.
+        return { ok: true, data: { version: st.version ?? 0 } };
       default: return { ok: false, error: 'Unknown operation.' };
     }
   }
