@@ -29,3 +29,5 @@ Phase 4 rule-removal checks (10 Nov): each access rule in src/core/permissions.t
 | 10 | 8-9 | Preview banner implied a stronger data/key boundary than established | Narrow banner: opaque-origin, network not blocked, not secure for untrusted code | Browser probes parent/storage/CORS and confirms simple POST cannot mutate API; no broad isolation claim |
 
 Browser E2E: scripts/browser-e2e.mjs runs actual UI -> HttpClient -> Vite proxy -> real API binary. Two browser contexts, temporary JSON data. 47 requests observed including boundary probes. 390x844 screenshots inspected. Cross-session updates still need re-entry/reload; live sync not built. Real phone keyboard not tested.
+
+| 11 | 9 | Reloading or an offline gap dropped unsent chat text and unsaved code edits | Drafts and edits persist in local storage per user/project; edit drafts restore only while the server revision still matches, otherwise the conflict flow takes over | ui.test.tsx reload tests: draft kept, matching-rev edit kept, stale edit not restored |
