@@ -47,6 +47,14 @@ export function folderFingerprint(fileRevs: Record<string, number>, folder: stri
     .join(',');
 }
 
+/**
+ * What a review's check actually depends on: every file revision in the folder plus the
+ * CONTRACT.md revision. A contract edit after a clean check must invalidate acceptance.
+ */
+export function reviewFingerprint(fileRevs: Record<string, number>, folder: string): string {
+  return `${folderFingerprint(fileRevs, folder)}|CONTRACT.md@${fileRevs['CONTRACT.md'] ?? 0}`;
+}
+
 export function defaultContract(projectName: string, folders: { folder: string; owner: string }[] = []): string {
   return [
     `# Shared contract for ${projectName}`,
