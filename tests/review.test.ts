@@ -103,4 +103,56 @@ describe('merge review (PRD F6, acceptance 9)', () => {
     state = ok(acceptTaskMerge(state, pid, 'u-ram', id)).state;
     expect(taskOf(state, 'u-seeta').review?.state).toBe('accepted');
   });
+
+  it('a contract edit after a clean check blocks the merge until re-checked', () => {
+    let { state, pid, taskOf } = setup();
+    const id = taskOf(state, 'u-seeta').id;
+    state = ok(setTaskStatus(state, pid, 'u-seeta', id, 'done')).state;
+    state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
+    state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
+    expect(taskOf(state, 'u-seeta').review?.state).toBe('ready');
+    const p = state.projects.find((x) => x.id === pid)!;
+    state = ok(saveFile(state, pid, 'u-ram', 'CONTRACT.md', p.files['CONTRACT.md'] + '- EXTRA_NAME\n')).state;
+    const stale = acceptTaskMerge(state, pid, 'u-ram', id);
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.error).toMatch(/changed since/i);
+    state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
+    state = ok(acceptTaskMerge(state, pid, 'u-ram', id)).state;
+    expect(taskOf(state, 'u-seeta').review?.state).toBe('accepted');
+  });
+
+  it('edits after a merge reopen the review instead of leaving a stale merged status', () => {
+    let { state, pid, taskOf } = setup();
+    const id = taskOf(state, 'u-seeta').id;
+    state = ok(setTaskStatus(state, pid, 'u-seeta', id, 'done')).state;
+    state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
+    state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
+    state = ok(acceptTaskMerge(state, pid, 'u-ram', id)).state;
+    expect(taskOf(state, 'u-seeta').review?.state).toBe('accepted');
+    // A teammate edit inside the merged folder reopens the review.
+    state = ok(saveFile(state, pid, 'u-seeta', 'frontend/app.ts', 'export const y = 2;')).state;
+    expect(taskOf(state, 'u-seeta').review?.state).toBe('submitted');
+    // Re-merge, then a contract edit reopens it too (the check depended on the contract).
+    state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
+    state = ok(acceptTaskMerge(state, pid, 'u-ram', id)).state;
+    expect(taskOf(state, 'u-seeta').review?.state).toBe('accepted');
+    const p = state.projects.find((x) => x.id === pid)!;
+    state = ok(saveFile(state, pid, 'u-ram', 'CONTRACT.md', p.files['CONTRACT.md'] + '- MORE_NAMES\n')).state;
+    expect(taskOf(state, 'u-seeta').review?.state).toBe('submitted');
+  });
+
+  it('acceptance stores an immutable snapshot of the folder as merged', () => {
+    let { state, pid, taskOf } = setup();
+    const id = taskOf(state, 'u-seeta').id;
+    state = ok(saveFile(state, pid, 'u-seeta', 'frontend/index.html', '<p>@shared PROJECT_NAME</p>')).state;
+    state = ok(setTaskStatus(state, pid, 'u-seeta', id, 'done')).state;
+    state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
+    state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
+    state = ok(acceptTaskMerge(state, pid, 'u-ram', id)).state;
+    expect(taskOf(state, 'u-seeta').review?.snapshot?.['frontend/index.html']).toBe('<p>@shared PROJECT_NAME</p>');
+    // A later edit reopens the review; the old snapshot no longer stands as merged state.
+    state = ok(saveFile(state, pid, 'u-seeta', 'frontend/index.html', '<p>changed</p>')).state;
+    expect(taskOf(state, 'u-seeta').review?.state).toBe('submitted');
+    expect(taskOf(state, 'u-seeta').review?.snapshot).toBeUndefined();
+  });
 });
