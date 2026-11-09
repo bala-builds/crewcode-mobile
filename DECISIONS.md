@@ -19,3 +19,7 @@ Status labels: **Owner-approved** means the user decided it. **Working choice** 
 Ground rules kept while building: no paid plan or card required so far; test identities only (not a login); no public deployment before Phase 10 authentication; database changes and CI runs each need explicit approval first.
 - Team codes expire 7 days after creation or regeneration (PRD B5 says codes can expire; the PRD sets no duration, so 7 days is a clearly labeled TEST default). Expiry is configurable by the owner per project in the Team sheet: no expiry, 1, 7 or 30 days, applied to the current code without changing it. Codes already issued keep their established conditions until the owner changes them. The owner sees the date in the Team sheet and regenerates to reopen joining. Teammates never receive the code or its state.
 - Join limits (PRD B5 "limited in use") are owner-configurable per code: no limit (the default; no forced cap) or 1-1000 joins. Uses are counted on each successful join; an existing member retrying still gets the already-member message, and the limit refusal tells the joiner to ask the owner. Both controls are local reversible settings, no approval needed.
+
+## Merge review (PRD F6, acceptance 9)
+
+Work in a task folder is a draft until the assignee submits it and the owner runs the integration check and merges it. A merge is refused while mismatches are open or when the folder changed after the last clean check (stale review). Test default; real merge targets (moving code into a shared tree) come with real storage in Phase 9.
