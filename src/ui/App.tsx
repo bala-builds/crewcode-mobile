@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProviderLabel, TaskStatus } from '../core/types';
 import { PROVIDER_LABELS, ROOT_FILES } from '../core/types';
 import { PROVIDERS, keyring, maskKey } from '../core/providers';
@@ -46,7 +46,7 @@ function canWriteView(v: ProjectView, path: string): boolean {
   return v.tasks.some((t) => path.startsWith(t.folder));
 }
 
-export function App({ client }: { client?: ClientData }) {
+export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: number }) {
   const cli = useMemo<ClientData>(() => client ?? new HttpClient('/api'), [client]);
   const [me, setMeState] = useState<Me | null>(() => (hashParams().get('demo') ? null : loadMe()));
   const setMe = (m: Me | null) => { saveMe(m); setMeState(m); };
@@ -146,7 +146,8 @@ export function App({ client }: { client?: ClientData }) {
           go({ name: 'workspace', pid: screen.pid });
           return null;
         }} />}
-      {me && screen.name === 'workspace' && <Workspace me={me} view={view} pid={screen.pid} load={() => refreshFor(me.id, screen.pid)} actOp={actOp} go={go} err={err} clearErr={() => setErr(null)} />}
+      {me && screen.name === 'workspace' && <Workspace me={me} view={view} pid={screen.pid} load={() => refreshFor(me.id, screen.pid)} actOp={actOp} go={go} err={err} clearErr={() => setErr(null)} pollMs={pollMs}
+        checkVersion={async () => { const r = await op(cli, me.id, 'getVersion'); return r.ok ? (r.data.version as number) : null; }} />}
     </div>
   );
 }
@@ -288,7 +289,7 @@ function AiAccess({ me, view, pid, load, go, save }: { me: Me; view: ProjectView
   );
 }
 
-function Workspace({ me, view, pid, load, actOp, go, err, clearErr }: { me: Me; view: ProjectView | null; pid: string; load: () => Promise<ProjectView | null>; actOp: (name: string, args: Record<string, unknown>, pid?: string) => Promise<any>; go: (s: Screen) => void; err: string | null; clearErr: () => void }) {
+function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion, pollMs = 4000 }: { me: Me; view: ProjectView | null; pid: string; load: () => Promise<ProjectView | null>; actOp: (name: string, args: Record<string, unknown>, pid?: string) => Promise<any>; go: (s: Screen) => void; err: string | null; clearErr: () => void; checkVersion?: () => Promise<number | null>; pollMs?: number }) {
   const [tab, setTabState] = useState<Tab>((hashParams().get('tab') as Tab) || tabMemory.get(pid) || 'chat');
   const setTab = (t: Tab) => { tabMemory.set(pid, t); setTabState(t); };
   const [draft, setDraftState] = useState(() => draftMemory.get(pid) ?? '');
@@ -299,6 +300,21 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr }: { me: Me; 
   const editKey = (path: string) => `${me.id}:${pid}:${path}`;
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const p = view && view.id === pid ? view : null;
+  // Cross-session propagation: poll the server mutation counter and reload when another
+  // session (or device) changed the project. Reloading preserves local drafts and surfaces
+  // edit conflicts instead of overwriting - the same path as a manual reload.
+  const verRef = useRef<number | null>(null);
+  useEffect(() => { if (p?.stateVersion != null) verRef.current = p.stateVersion; }, [p?.stateVersion]);
+  useEffect(() => {
+    if (!checkVersion || !pollMs) return;
+    const t = setInterval(async () => {
+      const v = await checkVersion();
+      if (v == null) return;
+      if (verRef.current == null) { verRef.current = v; return; }
+      if (v !== verRef.current) { verRef.current = v; await load(); }
+    }, pollMs);
+    return () => clearInterval(t);
+  }, [pid, pollMs]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p) return <div className="screen">Loading...</div>;
   const owner = p.role === 'owner';
   const nameOf = (id: string) => (id === 'ai' ? 'AI' : p.names[id] ?? 'Unknown');
@@ -595,4 +611,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-                                                                                                                     }
+  }
