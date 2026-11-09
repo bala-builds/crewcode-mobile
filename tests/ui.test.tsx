@@ -147,6 +147,39 @@ describe('Phase 1 owner journey and states', () => {
   });
 });
 
+describe('Phase 3 preview checks (simulated)', () => {
+  const rerenderWithHash = (hash: string) => {
+    act(() => root.unmount());
+    host.remove();
+    location.hash = hash;
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    act(() => { root.render(React.createElement(App)); });
+  };
+
+  it('edited code is what the preview shows, and the preview iframe is sandboxed', () => {
+    rerenderWithHash('#demo=seeta'); // teammate with a built frontend/index.html
+    clickTab('Code');
+    const editor = document.querySelector('textarea.editor') as HTMLTextAreaElement;
+    expect(editor.value.length).toBeGreaterThan(0);
+    setVal(editor, editor.value + '\n<p>EDITED-MARKER-123</p>');
+    click('Save');
+    clickTab('Preview');
+    const frame = document.querySelector('iframe[title="Preview"]') as HTMLIFrameElement;
+    expect(frame).toBeTruthy();
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts'); // scripts only, no same-origin, no app data
+    expect(frame.getAttribute('srcdoc')).toContain('EDITED-MARKER-123');
+  });
+
+  it('teammate preview lists only files they can read', () => {
+    rerenderWithHash('#demo=seeta');
+    clickTab('Preview');
+    expect(text()).toContain('frontend/index.html');
+    expect(text()).not.toContain('Simulated preview of CONTRACT');
+  });
+});
+
 describe('Phase 1 teammate journey and restrictions', () => {
   it('join error with wrong code, join with real code, teammate-only views', () => {
     const code = (() => { click('Ram'); const c = createProjectJourney('Capsule'); click('Team'); const t = document.querySelector('.sheet .code')!.textContent!.trim(); click('Close'); return t; })();
