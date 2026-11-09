@@ -4,7 +4,7 @@ import { canAccess, isOwner, isMember } from './permissions';
 import { findByCode, generateTeamCode } from './teamcode';
 import { defaultContract, integrationCheck, folderFingerprint, reviewFingerprint } from './contract';
 import { planTasks, validatePlan, toTasks, simulateBuild, type PlannedTask } from './orchestrator';
-import { CATALOG, skillCanAccess } from './skills';
+import { CATALOG, skillCanAccess, localRunnable } from './skills';
 import { scanForKeys } from './keysafety';
 
 export type Result<T = {}> = ({ ok: true; state: AppState } & T) | { ok: false; error: string };
@@ -442,6 +442,33 @@ export function removeSkill(state: AppState, projectId: string, userId: string, 
  * folder-scope gate as a person (skillCanAccess). Out-of-scope or unapproved: refused,
  * nothing runs, nothing is written. Deterministic and local - no network.
  */
+/**
+ * Local deterministic tool handlers. Each receives only the single in-scope file content
+ * (and the contract for checks) - no project, no network, no writes. That is the whole
+ * runtime for now; anything needing more is refused by the capability check above.
+ */
+const LOCAL_TOOL_HANDLERS: Record<string, (content: string, contract: string, path: string) => string> = {
+  'code-review': (content, contract, path) => {
+    const lines = content.split('\n').length;
+    const shared = [...content.matchAll(/@shared\s+(\w+)/g)].map((m) => m[1]);
+    const missing = shared.filter((n) => !contract.includes(n));
+    return `Review of ${path}: ${lines} lines. ` +
+      (shared.length ? `Shared names used: ${shared.join(', ')}.` : 'No shared names used.') +
+      (missing.length ? ` Not in the contract: ${missing.join(', ')}.` : ' All shared names match the contract.');
+  },
+  'cloudflare-security': (content, _contract, path) => {
+    const found = scanForKeys(content);
+    return found.length
+      ? `Security scan of ${path}: ${found.length} possible secret(s) found and masked: ${found.join(', ')}. Remove them.`
+      : `Security scan of ${path}: no keys or secrets found.`;
+  },
+  'docs-mcp': (content, _contract, path) => {
+    const headings = content.split('\n').filter((l) => l.trim().startsWith('#')).map((l) => l.trim());
+    const lines = content.split('\n').length;
+    return `Outline of ${path}: ${lines} lines. ` + (headings.length ? `Headings: ${headings.join(' | ')}` : 'No headings found.');
+  },
+};
+
 export function runSkill(state: AppState, projectId: string, userId: string, skillId: string, path: string): Result<{ output: string }> {
   const p0 = state.projects.find((x) => x.id === projectId);
   if (!p0) return fail('Project not found.');
@@ -453,23 +480,13 @@ export function runSkill(state: AppState, projectId: string, userId: string, ski
   }
   const content = p0.files[path];
   if (content === undefined) return fail(`No file named ${path}.`);
-  let output: string;
-  if (skillId === 'code-review') {
-    const lines = content.split('\n').length;
-    const shared = [...content.matchAll(/@shared\s+(\w+)/g)].map((m) => m[1]);
-    const contract = p0.files['CONTRACT.md'] ?? '';
-    const missing = shared.filter((n) => !contract.includes(n));
-    output = `Review of ${path}: ${lines} lines. ` +
-      (shared.length ? `Shared names used: ${shared.join(', ')}.` : 'No shared names used.') +
-      (missing.length ? ` Not in the contract: ${missing.join(', ')}.` : ' All shared names match the contract.');
-  } else if (skillId === 'cloudflare-security') {
-    const found = scanForKeys(content);
-    output = found.length
-      ? `Security scan of ${path}: ${found.length} possible secret(s) found and masked: ${found.join(', ')}. Remove them.`
-      : `Security scan of ${path}: no keys or secrets found.`;
-  } else {
-    return fail(`${item.label} cannot run yet. It is listed but not runnable in this build.`);
+  // Declared capabilities are enforced at run time: this build provides in-scope reads only.
+  if (!localRunnable(item)) {
+    return fail(`${item.label} declares capabilities this build does not provide (${item.caps.join(', ')}). It is listed but cannot run yet.`);
   }
+  const handler = LOCAL_TOOL_HANDLERS[skillId];
+  if (!handler) return fail(`${item.label} cannot run yet. It is listed but not runnable in this build.`);
+  const output = handler(content, p0.files['CONTRACT.md'] ?? '', path);
   const r = mut(state, projectId, (p) => {
     p.messages.push({ id: newId('m'), authorId: 'ai', taskId: null, kind: 'system', at: Date.now(), text: `${item.label} (run by ${userId}): ${output}` });
   });
