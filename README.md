@@ -16,6 +16,9 @@ A chat-first app where a team builds software together. The owner writes a maste
 - Do not deploy this publicly before authentication exists.
 - Stack is a mobile-web prototype (Vite, React, TypeScript). `src/core` has no UI or browser dependency so it can move to React Native later. Native vs mobile web is still an open decision.
 
+## Local dev API
+`npm run server` starts a local API on 127.0.0.1:8787 that applies the permission rules on the server side and returns only what each caller may see. It uses test identities, saves to a git-ignored `server/data.json`, and is not for public deployment. The UI does not call it yet. See `ACCEPTANCE.md` for what is met, demo-only or not built.
+
 ## Run
 ```
 npm install
