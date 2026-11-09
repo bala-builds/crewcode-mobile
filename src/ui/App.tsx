@@ -215,7 +215,7 @@ function Workspace({ state, setState, user, pid, go, nameOf }: { state: AppState
       </div>
       {tab === 'chat' && <ChatView p={p} user={user} nameOf={nameOf} msgs={msgs} tasks={tasks} owner={owner} thread={activeThread} setThread={setThread}
         onAssign={() => act(S.assignTasks(state, pid, user))} onBuild={(id: string, force: boolean) => act(S.runBuild(state, pid, user, id, { forceError: force }))} openCode={(f: string) => { setOpen(f); setTab('code'); }} err={err} />}
-      {tab === 'code' && <CodeView p={p} user={user} open={open} setOpen={setOpen} onSave={(path, c) => act(S.saveFile(state, pid, user, path, c))} err={err} clearErr={() => setErr(null)} />}
+      {tab === 'code' && <CodeView p={p} user={user} open={open} setOpen={setOpen} onSave={(path, c, rev) => act(S.saveFile(state, pid, user, path, c, rev))} err={err} clearErr={() => setErr(null)} />}
       {tab === 'preview' && <PreviewView p={p} user={user} />}
       {tab === 'tasks' && <TasksView p={p} user={user} nameOf={nameOf} onStatus={(id, s) => act(S.setTaskStatus(state, pid, user, id, s))} err={err} />}
       {tab === 'chat' && (
@@ -274,10 +274,10 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, onAs
   );
 }
 
-function CodeView({ p, user, open, setOpen, onSave, err, clearErr }: { p: Project; user: string; open: string | null; setOpen: (f: string | null) => void; onSave: (path: string, c: string) => void; err: string | null; clearErr: () => void }) {
+function CodeView({ p, user, open, setOpen, onSave, err, clearErr }: { p: Project; user: string; open: string | null; setOpen: (f: string | null) => void; onSave: (path: string, c: string, rev: number) => void; err: string | null; clearErr: () => void }) {
   const files = visibleFiles(p, user); const path = open && files.includes(open) ? open : files.find((f) => canAccess(p, user, 'write', f)) ?? files[0] ?? null;
-  const [text, setText] = useState(''); const [dirty, setDirty] = useState(false);
-  useEffect(() => { setText(path ? p.files[path] ?? '' : ''); setDirty(false); }, [path, p.files]);
+  const [text, setText] = useState(''); const [dirty, setDirty] = useState(false); const [rev, setRev] = useState(0);
+  useEffect(() => { setText(path ? p.files[path] ?? '' : ''); setRev(path ? p.fileRevs?.[path] ?? 0 : 0); setDirty(false); }, [path, p.files]);
   if (!path) return <div className="screen"><div className="empty">No files you can open yet.</div></div>;
   const editable = canAccess(p, user, 'write', path);
   const t = visibleTasks(p, user);
@@ -290,7 +290,7 @@ function CodeView({ p, user, open, setOpen, onSave, err, clearErr }: { p: Projec
       <textarea className="editor" aria-label={'Contents of ' + path} value={text} readOnly={!editable} onChange={(e) => { setText(e.target.value); setDirty(true); clearErr(); }} />
       <Err text={err} />
       {findings.length > 0 && <div className="note">Integration check: {findings.map((f) => `${f.name} in ${f.path} is not in CONTRACT.md`).join('. ')}</div>}
-      <div className="row" style={{ marginTop: 8 }}><button className="primary" disabled={!editable || !dirty} onClick={() => onSave(path, text)}>Save</button>{dirty && <span className="muted">Unsaved changes</span>}</div>
+      <div className="row" style={{ marginTop: 8 }}><button className="primary" disabled={!editable || !dirty} onClick={() => onSave(path, text, rev)}>Save</button>{dirty && <span className="muted">Unsaved changes</span>}</div>
     </div>
   );
 }
@@ -347,14 +347,23 @@ function TeamSheet({ state, p, user, nameOf, act, close, err }: { state: AppStat
   );
 }
 
+const RUNNABLE = new Set(['code-review', 'cloudflare-security']);
+
 function SkillsSheet({ p, user, q, setQ, act, state, pid, close, err }: { p: Project; user: string; q: string; setQ: (s: string) => void; act: (r: S.Result<any>) => void; state: AppState; pid: string; close: () => void; err: string | null }) {
   const items = useMemo(() => searchCatalog(q), [q]); const owner = isOwner(p, user);
+  const [runPath, setRunPath] = useState<Record<string, string>>({}); const [output, setOutput] = useState<string | null>(null);
+  const run = (id: string) => {
+    const r = S.runSkill(state, pid, user, id, (runPath[id] ?? '').trim());
+    if (r.ok) { act(r); setOutput(r.output); }
+    else act(r);
+  };
   return (
     <div className="sheet-bg" onClick={close}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Skills and MCPs">
       <div className="row spread"><h2 style={{ margin: 0 }}>Skills, MCPs, prebuilt</h2><button className="small" onClick={close}>Close</button></div>
-      <div className="note">Placeholders only. Nothing is installed or run, and availability is not verified.</div>
+      <div className="note">Starter catalog. Code review and Cloudflare Security run locally, only inside your folder scope. The rest are listed but cannot run yet.</div>
       <input aria-label="Search catalog" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" />
       <Err text={err} />
+      {output && <div className="note" role="status">{output}</div>}
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
       {items.map((it) => {
         const added = p.skills.find((s) => s.id === it.id);
@@ -366,8 +375,16 @@ function SkillsSheet({ p, user, q, setQ, act, state, pid, close, err }: { p: Pro
               {!added && <button className="small primary" onClick={() => act(S.addSkill(state, pid, user, it.id))}>Add</button>}
               {added && <span className="tag">{added.approvedByOwner ? 'approved' : 'waiting for owner'}</span>}
               {added && !added.approvedByOwner && owner && <button className="small" onClick={() => act(S.approveSkill(state, pid, user, it.id))}>Approve</button>}
-              {added && (owner || added.addedBy === user) && <button className="small danger" onClick={() => act(S.removeSkill(state, pid, user, it.id))}>Remove</button>}
-            </div></div>
+              {added && (owner || added.addedBy === user) && <button className="small danger" onClick={() => { setOutput(null); act(S.removeSkill(state, pid, user, it.id)); }}>Remove</button>}
+            </div>
+            {added && added.approvedByOwner && RUNNABLE.has(it.id) && (
+              <div className="row" style={{ marginTop: 8 }}>
+                <input aria-label={`File for ${it.label}`} placeholder="file path, e.g. frontend/index.html" value={runPath[it.id] ?? ''} onChange={(e) => setRunPath({ ...runPath, [it.id]: e.target.value })} />
+                <button className="small primary" onClick={() => run(it.id)}>Run</button>
+              </div>
+            )}
+            {added && added.approvedByOwner && !RUNNABLE.has(it.id) && <div className="muted" style={{ marginTop: 8 }}>Cannot run yet in this build.</div>}
+          </div>
         );
       })}
       <div className="muted">{CATALOG.length} items in the starter set.</div>
