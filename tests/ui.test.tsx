@@ -334,6 +334,37 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     await click('7 days');
     expect(text()).toContain('This code expires on');
   });
+
+  it('owner integration review flags contract mismatches per folder; teammate does not see it', async () => {
+    const pid = (api.state as any).projects[0].id;
+    await click('Ram');
+    await clickCard('Habit Tracker');
+    await clickTab('Tasks');
+    expect(text()).toContain('No tasks yet');
+    expect(text()).not.toContain('Integration review');
+    await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
+    // Owner writes a teammate file using a shared name the contract does not list.
+    await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'frontend/index.html', content: '<p>@shared BOGUS_NAME</p>' } });
+    await click('Back');
+    await clickCard('Habit Tracker');
+    await clickTab('Tasks');
+    expect(text()).toContain('Integration review');
+    expect(text()).toContain('BOGUS_NAME in frontend/index.html');
+    expect(text()).toContain('not in CONTRACT.md');
+    // Fixing the file clears the flag: the folder fits the contract again.
+    await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'frontend/index.html', content: '<p>@shared PROJECT_NAME</p>' } });
+    await click('Back');
+    await clickCard('Habit Tracker');
+    await clickTab('Tasks');
+    expect(text()).toContain('frontend/ (Seeta): fits the contract.');
+    expect(text()).not.toContain('BOGUS_NAME');
+    await click('Back');
+    await click('Switch');
+    await click('Seeta');
+    await clickCard('Habit Tracker');
+    await clickTab('Tasks');
+    expect(text()).not.toContain('Integration review');
+  });
 });
 
 describe('Phase 9 states: drafts and unsaved edits survive a reload', () => {
