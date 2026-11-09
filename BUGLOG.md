@@ -13,3 +13,7 @@ Visual checks: 390 and 360 px wide, all tabs and both sheets, no horizontal page
 | 6 | 1 | Typed composer text lost when going Back from a project | ui.test.tsx tap-through (failed before fix) | Remember draft per project in memory | ui.test.tsx: draft survives Back and re-enter |
 
 Phase 1 keyboard check, what it is: pages rendered at 360x420 and 390x420 to imitate a viewport squeezed by a keyboard. Header, composer and tabs stay visible and nothing overflows sideways (shots/kb-*.png, local only). This is NOT a real phone keyboard test: no iOS/Android keyboard, no safe-area insets, no browser address-bar resize. Still unverified.
+
+Phase 3 checks (10 Nov): edited code is what the preview shows and the preview iframe is sandboxed (tests/ui.test.tsx). A crashing preview page that also tries to overwrite the parent document does not touch the app: the iframe runs as an opaque origin with scripts only, the app stays intact (shots/phase1/15-preview-crash-isolated.png, local only). A 61-message chat scrolls with the composer and tabs pinned, no sideways overflow (shots/phase1/14-long-chat.png, local only).
+
+Phase 4 rule-removal checks (10 Nov): each access rule in src/core/permissions.ts was removed one at a time and the suite re-run. Every removal made at least one test fail: outsider block, path-traversal refusal, root files read-only for teammates, folder scoping, task visibility scoping, message visibility scoping. No rule is untested.
