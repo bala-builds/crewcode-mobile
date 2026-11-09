@@ -581,7 +581,7 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
   return (
     <div className="sheet-bg" onClick={close}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Skills and MCPs">
       <div className="row spread"><h2 style={{ margin: 0 }}>Skills, MCPs, prebuilt</h2><button className="small" onClick={close}>Close</button></div>
-      <div className="note">Starter catalog. Local shared-name check, Local secret scan and Docs outline run locally, only inside your folder scope. Items needing more than local reads say what they need.</div>
+      <div className="note">Starter catalog (placeholder names, not verified). {CATALOG.filter(localRunnable).map((i) => i.label).join(', ')} run locally, only inside your folder scope. Items needing more than local reads say what they need.</div>
       <input aria-label="Search catalog" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" />
       <Err text={err} />
       {output && <div className="note" role="status">{output}</div>}
@@ -611,4 +611,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-        }
+}
