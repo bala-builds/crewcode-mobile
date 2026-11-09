@@ -343,21 +343,32 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     expect(text()).toContain('No tasks yet');
     expect(text()).not.toContain('Integration review');
     await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
-    // Owner writes a teammate file using a shared name the contract does not list.
+    // Owner plants a mismatch in the teammate folder and the teammate submits the done task.
     await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'frontend/index.html', content: '<p>@shared BOGUS_NAME</p>' } });
+    const seetaTask = () => api.state.projects.find((x) => x.id === pid)!.tasks.find((t) => t.assigneeId === 'u-seeta')!;
+    await api.call({ as: 'u-seeta', op: 'setTaskStatus', args: { projectId: pid, taskId: seetaTask().id, status: 'done' } });
+    await api.call({ as: 'u-seeta', op: 'submitTaskForReview', args: { projectId: pid, taskId: seetaTask().id } });
     await click('Back');
     await clickCard('Habit Tracker');
     await clickTab('Tasks');
     expect(text()).toContain('Integration review');
+    // Owner runs the check: the mismatch is reported and the merge stays blocked.
+    await click('Run check');
+    expect(text()).toContain('changes requested');
     expect(text()).toContain('BOGUS_NAME in frontend/index.html');
-    expect(text()).toContain('not in CONTRACT.md');
-    // Fixing the file clears the flag: the folder fits the contract again.
+    const mergeBtn = btn('Merge') as HTMLButtonElement;
+    expect(mergeBtn.disabled).toBe(true);
+    // Fixing the file and re-running the check clears the flag and the merge goes through.
     await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'frontend/index.html', content: '<p>@shared PROJECT_NAME</p>' } });
+    await api.call({ as: 'u-seeta', op: 'submitTaskForReview', args: { projectId: pid, taskId: seetaTask().id } });
     await click('Back');
     await clickCard('Habit Tracker');
     await clickTab('Tasks');
-    expect(text()).toContain('frontend/ (Seeta): fits the contract.');
+    await click('Run check');
     expect(text()).not.toContain('BOGUS_NAME');
+    await click('Merge');
+    expect(text()).toContain('merged');
+    // Teammates never see the owner review card.
     await click('Back');
     await click('Switch');
     await click('Seeta');
