@@ -16,3 +16,18 @@ export function searchCatalog(q: string): SkillItem[] {
   const s = q.trim().toLowerCase();
   return s ? CATALOG.filter((c) => (c.label + ' ' + c.kind + ' ' + c.summary).toLowerCase().includes(s)) : CATALOG;
 }
+
+import type { Project } from './types';
+import { canAccess, type Action } from './permissions';
+
+/**
+ * The one gate every skill run must pass. A skill acts for a member and is held to that
+ * member's folder scope - the same rule as a person. It must be installed and, when a
+ * teammate added it, approved by the owner first. Removing the skill ends its access.
+ */
+export function skillCanAccess(p: Project, userId: string, skillId: string, action: Action, path: string): boolean {
+  const s = p.skills.find((x) => x.id === skillId);
+  if (!s) return false;
+  if (!s.approvedByOwner) return false;
+  return canAccess(p, userId, action, path);
+}
