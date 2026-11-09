@@ -9,7 +9,7 @@
   "test": "vitest run",
   "typecheck": "tsc --noEmit",
   "server:build": "vite build --ssr server/index.ts --outDir dist-server",
-  "tools:build": "vite build --ssr src/toolproc/runner-entry.ts --outDir dist-tools",
+  "tools:build": "vite build --ssr src/mcp/server-entry.ts --outDir dist-mcp",
   "pretest": "npm run tools:build",
   "server": "npm run server:build && node dist-server/index.js"
  },
