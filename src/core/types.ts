@@ -46,6 +46,7 @@ export interface Project {
   team: { code: string; revoked: boolean; expiresAt: number | null };
   members: Member[];
   files: Record<string, string>; // path -> content. Root holds PRD.md, AGENT_INSTRUCTIONS.md, CONTRACT.md
+  fileRevs: Record<string, number>; // path -> revision, bumped on every write; the base of optimistic conflict checks
   tasks: Task[];
   messages: ChatMessage[];
   ownerKeySharing: boolean;
