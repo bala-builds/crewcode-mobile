@@ -11,7 +11,7 @@ export type ApiResponse = { ok: true; data?: any } | { ok: false; error: string 
 
 export type ProjectView = {
   id: string; name: string; role: 'owner' | 'teammate'; ownerKeySharing: boolean;
-  teamCode?: string; teamRevoked?: boolean; files: Record<string, string>; fileRevs: Record<string, number>;
+  teamCode?: string; teamRevoked?: boolean; teamExpiresAt?: number | null; files: Record<string, string>; fileRevs: Record<string, number>;
   tasks: ReturnType<typeof visibleTasks>;
   messages: ReturnType<typeof visibleMessages>; members: ReturnType<typeof visibleMembers>;
   skills: Project['skills'];
@@ -27,6 +27,7 @@ export function viewFor(p: Project, userId: string, users: { id: string; name: s
     id: p.id, name: p.name, role: owner ? 'owner' : 'teammate', ownerKeySharing: p.ownerKeySharing,
     teamCode: owner ? p.team.code : undefined, // teammates never receive the code
     teamRevoked: owner ? p.team.revoked : undefined,
+    teamExpiresAt: owner ? p.team.expiresAt : undefined, // teammates never learn code state
     files, fileRevs, tasks: visibleTasks(p, userId), messages: visibleMessages(p, userId), members: visibleMembers(p, userId),
     skills: p.skills,
     names: Object.fromEntries(p.members.map((m) => [m.userId, users.find((u) => u.id === m.userId)?.name ?? m.userId])),
