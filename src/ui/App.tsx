@@ -3,7 +3,7 @@ import type { ProviderLabel, TaskStatus } from '../core/types';
 import { PROVIDER_LABELS, ROOT_FILES } from '../core/types';
 import { PROVIDERS, keyring, maskKey } from '../core/providers';
 import { searchCatalog, CATALOG } from '../core/skills';
-import { integrationCheck, folderFingerprint } from '../core/contract';
+import { integrationCheck, reviewFingerprint } from '../core/contract';
 import { HttpClient, op, type ClientData, type ProjectView } from './client';
 
 /**
@@ -470,7 +470,7 @@ function TasksView({ p, nameOf, onStatus, actOp, err }: { p: ProjectView; nameOf
           {p.tasks.every((t) => !t.review) && <div className="muted">Nothing submitted for merge yet.</div>}
           {p.tasks.filter((t) => t.review).map((t) => {
             const r = t.review!;
-            const stale = r.state === 'ready' && r.fingerprint !== folderFingerprint(p.fileRevs ?? {}, t.folder);
+            const stale = r.state === 'ready' && r.fingerprint !== reviewFingerprint(p.fileRevs ?? {}, t.folder);
             return (
               <div key={t.id} style={{ marginTop: 8 }}>
                 <div className="row spread"><strong>{t.folder}</strong><span className="tag">{r.state === 'accepted' ? 'merged' : stale ? 'check is stale' : r.state.replace('_', ' ')}</span></div>
@@ -595,4 +595,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-                                                                                          }
+                                                                                                                     }
