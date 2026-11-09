@@ -17,3 +17,15 @@ Phase 1 keyboard check, what it is: pages rendered at 360x420 and 390x420 to imi
 Phase 3 checks (10 Nov): edited code is what the preview shows and the preview iframe is sandboxed (tests/ui.test.tsx). A crashing preview page that also tries to overwrite the parent document does not touch the app: the iframe runs as an opaque origin with scripts only, the app stays intact (shots/phase1/15-preview-crash-isolated.png, local only). A 61-message chat scrolls with the composer and tabs pinned, no sideways overflow (shots/phase1/14-long-chat.png, local only).
 
 Phase 4 rule-removal checks (10 Nov): each access rule in src/core/permissions.ts was removed one at a time and the suite re-run. Every removal made at least one test fail: outsider block, path-traversal refusal, root files read-only for teammates, folder scoping, task visibility scoping, message visibility scoping. No rule is untested.
+
+
+## Connected UI / Phase 9, 10 Nov
+
+| # | Phase | Issue | Fix | Retest |
+|---|-------|-------|-----|--------|
+| 7 | 2-4 | Identity switch briefly rendered stale project cards and crashed when no member row matched | Guard stale member lookup | Async UI suite and two-context Chrome journey pass |
+| 8 | 9 | Offline initial user-list load failed silently, leaving no identity buttons | Visible error with Retry connection; client bounds fetch to 10s | browser-e2e offline screenshot and client.test.ts |
+| 9 | 9 | API accepted any media type and had no friendly oversized/rate response | Require JSON, validate envelope, 1 MB byte cap, 300/min loopback cap, 15s request timeout | hardening.test.ts; iframe simple POST mutation refused |
+| 10 | 8-9 | Preview banner implied a stronger data/key boundary than established | Narrow banner: opaque-origin, network not blocked, not secure for untrusted code | Browser probes parent/storage/CORS and confirms simple POST cannot mutate API; no broad isolation claim |
+
+Browser E2E: scripts/browser-e2e.mjs runs actual UI -> HttpClient -> Vite proxy -> real API binary. Two browser contexts, temporary JSON data. 47 requests observed including boundary probes. 390x844 screenshots inspected. Cross-session updates still need re-entry/reload; live sync not built. Real phone keyboard not tested.
