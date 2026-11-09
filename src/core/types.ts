@@ -79,6 +79,8 @@ export interface AppState {
   users: TestUser[];
   projects: Project[];
   currentUserId: string | null;
+  /** Mutation counter, bumped by the server on every committed change; clients poll it to see each other's work. */
+  version?: number;
 }
 
 export const ROOT_FILES = ['PRD.md', 'AGENT_INSTRUCTIONS.md', 'CONTRACT.md'] as const;
