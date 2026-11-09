@@ -7,7 +7,7 @@ export function generateTeamCode(rand: () => number = Math.random): string {
   return `${s.slice(0, 3)}-${s.slice(3)}`;
 }
 
-export type JoinResult = { ok: true; project: Project } | { ok: false; reason: 'not_found' | 'revoked' | 'expired' | 'already_member' };
+export type JoinResult = { ok: true; project: Project } | { ok: false; reason: 'not_found' | 'revoked' | 'expired' | 'already_member' | 'used_up' };
 
 export function findByCode(projects: Project[], code: string, userId: string, now = Date.now()): JoinResult {
   const norm = code.trim().toUpperCase().replace(/\s+/g, '');
@@ -17,5 +17,7 @@ export function findByCode(projects: Project[], code: string, userId: string, no
   if (p.team.revoked) return { ok: false, reason: 'revoked' };
   if (p.team.expiresAt !== null && p.team.expiresAt < now) return { ok: false, reason: 'expired' };
   if (p.members.some((m) => m.userId === userId)) return { ok: false, reason: 'already_member' };
+  const max = p.team.maxJoins ?? null;
+  if (max !== null && (p.team.joinsUsed ?? 0) >= max) return { ok: false, reason: 'used_up' };
   return { ok: true, project: p };
 }
