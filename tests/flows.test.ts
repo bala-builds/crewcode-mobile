@@ -36,6 +36,21 @@ describe('create and join', () => {
     expect(g.state.projects[0].team.code).not.toBe('DEM-123');
     expect(revokeCode(s, pid, 'u-seeta').ok).toBe(false);
   });
+  it('team codes expire: expired codes refuse joins, regenerating reopens with a fresh window', () => {
+    const s = seedState(); const p = s.projects[0];
+    // New codes come with a live expiry window (PRD B5).
+    expect(p.team.expiresAt).not.toBeNull();
+    expect(p.team.expiresAt!).toBeGreaterThan(Date.now());
+    p.team.expiresAt = Date.now() - 1000; // force expiry
+    const j = joinProject(s, 'u-hanuma', 'DEM-123', ['x']);
+    expect(j.ok).toBe(false);
+    if (j.ok) throw Error();
+    expect(j.error).toContain('expired');
+    const g = ok(regenerateCode(s, p.id, 'u-ram'));
+    expect(g.state.projects[0].team.code).not.toBe('DEM-123');
+    expect(g.state.projects[0].team.expiresAt!).toBeGreaterThan(Date.now());
+    expect(joinProject(g.state, 'u-hanuma', g.state.projects[0].team.code, ['x']).ok).toBe(true);
+  });
   it('registers a name with validation', () => {
     expect(registerName(seedState(), 'A').ok).toBe(false);
     const r = ok(registerName(seedState(), '  Asha  '));
