@@ -10,17 +10,25 @@ export type ApiResponse = { ok: true; data?: any } | { ok: false; error: string 
 
 export type ProjectView = {
   id: string; name: string; role: 'owner' | 'teammate'; ownerKeySharing: boolean;
-  teamCode?: string; files: Record<string, string>; tasks: ReturnType<typeof visibleTasks>;
+  teamCode?: string; teamRevoked?: boolean; files: Record<string, string>; fileRevs: Record<string, number>;
+  tasks: ReturnType<typeof visibleTasks>;
   messages: ReturnType<typeof visibleMessages>; members: ReturnType<typeof visibleMembers>;
+  skills: Project['skills'];
+  names: Record<string, string>; // display names for member ids; test identities only until Phase 10
 };
 
-export function viewFor(p: Project, userId: string): ProjectView {
+export function viewFor(p: Project, userId: string, users: { id: string; name: string }[] = []): ProjectView {
   const files: Record<string, string> = {};
-  for (const f of visibleFiles(p, userId)) files[f] = p.files[f];
+  const fileRevs: Record<string, number> = {};
+  for (const f of visibleFiles(p, userId)) { files[f] = p.files[f]; fileRevs[f] = p.fileRevs?.[f] ?? 0; }
+  const owner = isOwner(p, userId);
   return {
-    id: p.id, name: p.name, role: isOwner(p, userId) ? 'owner' : 'teammate', ownerKeySharing: p.ownerKeySharing,
-    teamCode: isOwner(p, userId) ? p.team.code : undefined, // teammates never receive the code
-    files, tasks: visibleTasks(p, userId), messages: visibleMessages(p, userId), members: visibleMembers(p, userId),
+    id: p.id, name: p.name, role: owner ? 'owner' : 'teammate', ownerKeySharing: p.ownerKeySharing,
+    teamCode: owner ? p.team.code : undefined, // teammates never receive the code
+    teamRevoked: owner ? p.team.revoked : undefined,
+    files, fileRevs, tasks: visibleTasks(p, userId), messages: visibleMessages(p, userId), members: visibleMembers(p, userId),
+    skills: p.skills,
+    names: Object.fromEntries(p.members.map((m) => [m.userId, users.find((u) => u.id === m.userId)?.name ?? m.userId])),
   };
 }
 
@@ -37,13 +45,20 @@ export class Api {
     if (!this.state.users.some((x) => x.id === u)) return { ok: false, error: 'Unknown test identity.' };
     const st = this.state;
     switch (op) {
+      case 'listUsers':
+        // Test identities are not secrets; real accounts arrive with Phase 10 auth.
+        return { ok: true, data: st.users.map((x) => ({ id: x.id, name: x.name })) };
+      case 'registerName': {
+        const r = S.registerName(st, args.name ?? '');
+        const out = this.commit(r); return out.ok && r.ok ? { ok: true, data: { userId: r.userId } } : out;
+      }
       case 'listProjects':
-        return { ok: true, data: st.projects.filter((p) => isMember(p, u)).map((p) => viewFor(p, u)) };
+        return { ok: true, data: st.projects.filter((p) => isMember(p, u)).map((p) => viewFor(p, u, st.users)) };
       case 'getProject': {
         const p = st.projects.find((x) => x.id === args.projectId);
         // Same answer for "missing" and "not yours" so ids cannot be probed.
         if (!p || !isMember(p, u)) return { ok: false, error: 'Project not found.' };
-        return { ok: true, data: viewFor(p, u) };
+        return { ok: true, data: viewFor(p, u, st.users) };
       }
       case 'createProject': {
         const r = S.createProject(st, u, args.name, args.prd ?? '', args.instructions ?? '');
