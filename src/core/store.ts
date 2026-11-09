@@ -30,10 +30,13 @@ export function seedState(): AppState {
   return s;
 }
 
+/** Team codes expire after this long; the owner regenerates to reopen joining (PRD B5). */
+export const TEAM_CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 function createProjectRaw(ownerId: string, name: string, prd: string, instructions: string, code?: string): Project {
   return {
     id: newId('p'), name, ownerId,
-    team: { code: code ?? generateTeamCode(), revoked: false, expiresAt: null },
+    team: { code: code ?? generateTeamCode(), revoked: false, expiresAt: Date.now() + TEAM_CODE_TTL_MS },
     members: [{ userId: ownerId, role: 'owner', interests: [], ai: { kind: 'owner' } }],
     files: { 'PRD.md': prd, 'AGENT_INSTRUCTIONS.md': instructions, 'CONTRACT.md': defaultContract(name) },
     fileRevs: { 'PRD.md': 0, 'AGENT_INSTRUCTIONS.md': 0, 'CONTRACT.md': 0 },
@@ -113,7 +116,7 @@ export function setOwnerKeySharing(state: AppState, projectId: string, userId: s
 }
 
 export function regenerateCode(state: AppState, projectId: string, userId: string): Result {
-  return mut(state, projectId, (p) => { if (!isOwner(p, userId)) return 'Only the owner can do this.'; p.team = { code: generateTeamCode(), revoked: false, expiresAt: null }; });
+  return mut(state, projectId, (p) => { if (!isOwner(p, userId)) return 'Only the owner can do this.'; p.team = { code: generateTeamCode(), revoked: false, expiresAt: Date.now() + TEAM_CODE_TTL_MS }; });
 }
 export function revokeCode(state: AppState, projectId: string, userId: string): Result {
   return mut(state, projectId, (p) => { if (!isOwner(p, userId)) return 'Only the owner can do this.'; p.team.revoked = true; });
