@@ -85,7 +85,7 @@ export function createProject(state: AppState, userId: string, name: string, prd
 export function joinProject(state: AppState, userId: string, code: string, interests: string[]): Result<{ projectId: string }> {
   const r = findByCode(state.projects, code, userId);
   if (!r.ok) {
-    const msg = { not_found: 'No project has that code.', revoked: 'That code was turned off by the owner.', expired: 'That code has expired.', already_member: 'You are already on this project.' }[r.reason];
+    const msg = { not_found: 'No project has that code.', revoked: 'That code was turned off by the owner.', expired: 'That code has expired.', already_member: 'You are already on this project.', used_up: 'That code has reached its join limit. Ask the owner to raise it or make a new code.' }[r.reason];
     return fail(msg);
   }
   const clean = interests.map((i) => i.trim()).filter(Boolean);
@@ -93,6 +93,7 @@ export function joinProject(state: AppState, userId: string, code: string, inter
   const next = clone(state);
   const p = next.projects.find((x) => x.id === r.project.id)!;
   p.members.push({ userId, role: 'teammate', interests: clean });
+  p.team.joinsUsed = (p.team.joinsUsed ?? 0) + 1;
   return { ok: true, state: next, projectId: p.id };
 }
 
@@ -118,6 +119,24 @@ export function setOwnerKeySharing(state: AppState, projectId: string, userId: s
 export function regenerateCode(state: AppState, projectId: string, userId: string): Result {
   return mut(state, projectId, (p) => { if (!isOwner(p, userId)) return 'Only the owner can do this.'; p.team = { code: generateTeamCode(), revoked: false, expiresAt: Date.now() + TEAM_CODE_TTL_MS }; });
 }
+/** Owner sets the code's expiry in days from now, or null for no expiry. The code itself does not change. */
+export function setTeamCodeExpiry(state: AppState, projectId: string, userId: string, days: number | null): Result {
+  return mut(state, projectId, (p) => {
+    if (!isOwner(p, userId)) return 'Only the owner can do this.';
+    if (days !== null && (!Number.isFinite(days) || days < 1 || days > 365)) return 'Pick an expiry between 1 and 365 days, or no expiry.';
+    p.team.expiresAt = days === null ? null : Date.now() + days * 24 * 60 * 60 * 1000;
+  });
+}
+
+/** Owner sets how many teammates may join with the code, or null for no limit. No forced default cap. */
+export function setTeamJoinLimit(state: AppState, projectId: string, userId: string, maxJoins: number | null): Result {
+  return mut(state, projectId, (p) => {
+    if (!isOwner(p, userId)) return 'Only the owner can do this.';
+    if (maxJoins !== null && (!Number.isInteger(maxJoins) || maxJoins < 1 || maxJoins > 1000)) return 'Pick a join limit from 1 to 1000, or no limit.';
+    p.team.maxJoins = maxJoins;
+  });
+}
+
 export function revokeCode(state: AppState, projectId: string, userId: string): Result {
   return mut(state, projectId, (p) => { if (!isOwner(p, userId)) return 'Only the owner can do this.'; p.team.revoked = true; });
 }
