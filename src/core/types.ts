@@ -20,6 +20,18 @@ export interface Member {
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
 export type TaskRun = 'idle' | 'thinking' | 'failed';
+export type ReviewState = 'submitted' | 'ready' | 'changes_requested' | 'accepted';
+/**
+ * Owner merge review of a task folder (PRD F6). No review record means the work is a
+ * draft: it is not merged and does not count toward the project. 'accepted' means merged.
+ */
+export interface TaskReview {
+  state: ReviewState;
+  findings: { path: string; name: string }[];
+  /** Folder fingerprint (path@rev pairs) at the last check. A merge is refused once it no longer matches. */
+  fingerprint: string;
+  at: number;
+}
 export interface Task {
   id: string;
   title: string;
@@ -29,6 +41,7 @@ export interface Task {
   status: TaskStatus;
   run?: TaskRun;
   runError?: string;
+  review?: TaskReview;
 }
 
 export interface ChatMessage {
