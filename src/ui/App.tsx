@@ -91,7 +91,7 @@ export function App({ client }: { client?: ClientData }) {
   const actOp = async (name: string, args: Record<string, unknown>, pid?: string) => {
     if (!me) return null;
     const r = await op(cli, me.id, name, args);
-    if (!r.ok) { setErr(r.error); return null; }
+    if (!r.ok) { setErr(r.error); return r; }
     setErr(null);
     await refreshFor(me.id, pid ?? (screen.name === 'workspace' || screen.name === 'ai' || screen.name === 'invite' ? screen.pid : null));
     return r;
@@ -284,6 +284,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr }: { me: Me; 
   const setDraft = (d: string) => { draftMemory.set(pid, d); setDraftState(d); };
   const [sheet, setSheet] = useState<null | 'team' | 'skills'>((hashParams().get('sheet') as 'team' | 'skills') || null); const [q, setQ] = useState(''); const [open, setOpen] = useState<string | null>(null);
   const [thread, setThread] = useState<string | null>(null);
+  const [backupJson, setBackupJson] = useState('');
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const p = view && view.id === pid ? view : null;
   if (!p) return <div className="screen">Loading...</div>;
@@ -307,19 +308,19 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr }: { me: Me; 
       </div>
       {tab === 'chat' && <ChatView p={p} user={me.id} nameOf={nameOf} msgs={msgs} tasks={tasks} owner={owner} thread={activeThread} setThread={setThread}
         onAssign={() => actOp('assignTasks', { projectId: pid }, pid)} onBuild={(id: string, force: boolean) => actOp('runBuild', { projectId: pid, taskId: id, forceError: force, prompt: draftMemory.get(pid) ?? '' }, pid)} onCancel={(id: string) => actOp('cancelTaskRun', { projectId: pid, taskId: id }, pid)} openCode={(f: string) => { setOpen(f); setTab('code'); }} err={err} />}
-      {tab === 'code' && <CodeView p={p} open={open} setOpen={setOpen} onSave={(path, c, rev) => actOp('saveFile', { projectId: pid, path, content: c, baseRev: rev }, pid)} err={err} clearErr={clearErr} />}
+      {tab === 'code' && <CodeView p={p} open={open} setOpen={setOpen} onSave={(path, c, rev) => actOp('saveFile', { projectId: pid, path, content: c, baseRev: rev }, pid)} reload={() => load()} err={err} clearErr={clearErr} />}
       {tab === 'preview' && <PreviewView p={p} />}
       {tab === 'tasks' && <TasksView p={p} nameOf={nameOf} onStatus={(id, s) => actOp('setTaskStatus', { projectId: pid, taskId: id, status: s }, pid)} err={err} />}
       {tab === 'chat' && (
         <div className="composer">
           <textarea aria-label="Message" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={owner || activeThread ? 'Message the AI' : 'No task assigned yet'} />
-          <button className="primary" onClick={async () => { if (await actOp('postPrompt', { projectId: pid, text: draft, taskId: activeThread }, pid)) setDraft(''); }}>Send</button>
+          <button className="primary" onClick={async () => { const r = await actOp('postPrompt', { projectId: pid, text: draft, taskId: activeThread }, pid); if (r?.ok) setDraft(''); }}>Send</button>
         </div>
       )}
       <div className="tabs" role="tablist">
         {(['chat', 'code', 'preview', 'tasks'] as Tab[]).map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); clearErr(); }}>{t[0].toUpperCase() + t.slice(1)}</button>)}
       </div>
-      {sheet === 'team' && <TeamSheet p={p} user={me.id} nameOf={nameOf} actOp={(n, a) => actOp(n, a, pid)} close={() => setSheet(null)} err={err} />}
+      {sheet === 'team' && <TeamSheet p={p} user={me.id} nameOf={nameOf} actOp={(n, a) => actOp(n, a, pid)} close={() => setSheet(null)} err={err} backupJson={backupJson} setBackupJson={setBackupJson} />}
       {sheet === 'skills' && <SkillsSheet p={p} user={me.id} q={q} setQ={setQ} actOp={(n, a) => actOp(n, a, pid)} pid={pid} close={() => setSheet(null)} err={err} />}
     </>
   );
@@ -368,24 +369,47 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, onAs
   );
 }
 
-function CodeView({ p, open, setOpen, onSave, err, clearErr }: { p: ProjectView; open: string | null; setOpen: (f: string | null) => void; onSave: (path: string, c: string, rev: number) => void; err: string | null; clearErr: () => void }) {
+function CodeView({ p, open, setOpen, onSave, reload, err, clearErr }: { p: ProjectView; open: string | null; setOpen: (f: string | null) => void; onSave: (path: string, c: string, rev: number) => Promise<any>; reload: () => Promise<unknown>; err: string | null; clearErr: () => void }) {
   const files = Object.keys(p.files).sort();
   const path = open && files.includes(open) ? open : files.find((f) => canWriteView(p, f)) ?? files[0] ?? null;
   const [text, setText] = useState(''); const [dirty, setDirty] = useState(false); const [rev, setRev] = useState(0);
-  useEffect(() => { setText(path ? p.files[path] ?? '' : ''); setRev(path ? p.fileRevs?.[path] ?? 0 : 0); setDirty(false); }, [path, p.files]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [conflict, setConflict] = useState<{ mine: string } | null>(null);
+  useEffect(() => { setText(path ? p.files[path] ?? '' : ''); setRev(path ? p.fileRevs?.[path] ?? 0 : 0); setDirty(false); if (!conflict) setConflict(null); }, [path, p.files]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!path) return <div className="screen"><div className="empty">No files you can open yet.</div></div>;
   const editable = canWriteView(p, path);
   const t = p.tasks[0];
   const findings = p.role !== 'owner' && t ? integrationCheck(p.files['CONTRACT.md'], p.files, t.folder) : [];
+  const save = async () => {
+    const r = await onSave(path, text, rev);
+    if (r && !r.ok && typeof r.error === 'string' && r.error.startsWith('Conflict:')) {
+      const fresh = await reload(); // pull the other person's version for review; never overwrite silently
+      void fresh;
+      setConflict({ mine: text });
+    }
+  };
+  const serverText = p.files[path] ?? '';
+  const serverRev = p.fileRevs?.[path] ?? 0;
   return (
     <div className="screen">
-      <div className="files">{files.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => { setOpen(f); clearErr(); }}>{f}</button>)}</div>
+      <div className="files">{files.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => { setOpen(f); clearErr(); setConflict(null); }}>{f}</button>)}</div>
       <div className="row spread"><strong style={{ overflowWrap: 'anywhere' }}>{path}</strong><span className="tag">{editable ? 'editable' : 'read only'}</span></div>
       {!editable && <div className="note">You can read this file. Only the owner can change it.</div>}
+      {conflict && (
+        <div className="card" role="alert">
+          <strong>Someone changed this file while you were editing.</strong>
+          <p className="muted">Your edit was not saved. Review both versions, then choose. Nothing is overwritten silently.</p>
+          <div className="muted">Their saved version:</div>
+          <pre className="editor" style={{ whiteSpace: 'pre-wrap', maxHeight: 140, overflow: 'auto' }}>{serverText.slice(0, 2000)}</pre>
+          <div className="row wrap" style={{ marginTop: 8 }}>
+            <button className="small" onClick={() => { setText(serverText); setRev(serverRev); setDirty(false); setConflict(null); }}>Use their version</button>
+            <button className="small primary" onClick={async () => { const r = await onSave(path, conflict.mine, serverRev); if (r?.ok) { setText(conflict.mine); setDirty(false); setConflict(null); } }}>Keep my version</button>
+          </div>
+        </div>
+      )}
       <textarea className="editor" aria-label={'Contents of ' + path} value={text} readOnly={!editable} onChange={(e) => { setText(e.target.value); setDirty(true); clearErr(); }} />
       <Err text={err} />
       {findings.length > 0 && <div className="note">Integration check: {findings.map((f) => `${f.name} in ${f.path} is not in CONTRACT.md`).join('. ')}</div>}
-      <div className="row" style={{ marginTop: 8 }}><button className="primary" disabled={!editable || !dirty} onClick={() => onSave(path, text, rev)}>Save</button>{dirty && <span className="muted">Unsaved changes</span>}</div>
+      <div className="row" style={{ marginTop: 8 }}><button className="primary" disabled={!editable || !dirty} onClick={save}>Save</button>{dirty && <span className="muted">Unsaved changes</span>}</div>
     </div>
   );
 }
@@ -421,7 +445,7 @@ function TasksView({ p, nameOf, onStatus, err }: { p: ProjectView; nameOf: (id: 
   );
 }
 
-function TeamSheet({ p, user, nameOf, actOp, close, err }: { p: ProjectView; user: string; nameOf: (id: string) => string; actOp: (name: string, args: Record<string, unknown>) => Promise<any>; close: () => void; err: string | null }) {
+function TeamSheet({ p, user, nameOf, actOp, close, err, backupJson, setBackupJson }: { p: ProjectView; user: string; nameOf: (id: string) => string; actOp: (name: string, args: Record<string, unknown>) => Promise<any>; close: () => void; err: string | null; backupJson: string; setBackupJson: (v: string) => void }) {
   const owner = p.role === 'owner';
   return (
     <div className="sheet-bg" onClick={close}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Team">
@@ -435,6 +459,18 @@ function TeamSheet({ p, user, nameOf, actOp, close, err }: { p: ProjectView; use
           {owner && m.role !== 'owner' && <button className="small danger" style={{ marginTop: 8 }} onClick={() => actOp('removeMember', { projectId: p.id, targetId: m.userId })}>Remove</button>}
         </div>
       ))}
+      {owner && <div className="card"><strong>Backup</strong><p className="muted">Owner only. Export downloads a JSON snapshot. Restoring replaces the whole project; open editors on older versions will conflict loudly. Drive sync is a separate decision and is not built.</p>
+        <div className="row wrap" style={{ marginTop: 8 }}>
+          <button className="small" onClick={async () => { const r = await actOp('exportProject', { projectId: p.id }); if (r?.ok) setBackupJson(r.data.json); }}>Export</button>
+        </div>
+        {backupJson && <>
+          <textarea aria-label="Backup JSON" style={{ marginTop: 8, minHeight: 90 }} value={backupJson} onChange={(e) => setBackupJson(e.target.value)} />
+          <div className="row wrap" style={{ marginTop: 8 }}>
+            <CopyBtn text={backupJson} />
+            <button className="small danger" onClick={async () => { const r = await actOp('restoreProject', { json: backupJson }); if (r?.ok) setBackupJson(''); }}>Restore this backup</button>
+          </div>
+        </>}
+      </div>}
       {owner && <div className="card"><div className="row spread"><div className="grow"><strong>Share my AI model</strong><div className="muted">Teammates can use it without seeing the key.</div></div>
         <button className={'chip' + (p.ownerKeySharing ? ' on' : '')} aria-pressed={p.ownerKeySharing} onClick={() => actOp('setOwnerKeySharing', { projectId: p.id, on: !p.ownerKeySharing })}>{p.ownerKeySharing ? 'On' : 'Off'}</button></div></div>}
     </div></div>
