@@ -2,15 +2,18 @@
  * Placeholder catalog. These are the names you gave ("claude design", "cloudflare security") plus labelled examples.
  * Nothing here is installed or runs. Availability, licence and what each really does are not verified (O8).
  */
+export type Capability = 'read_scope' | 'write_scope' | 'network' | 'execute';
 export interface SkillItem {
   id: string; label: string; kind: 'skill' | 'mcp' | 'prebuilt';
   summary: string; permissions: string[]; verified: false;
+  /** What the item says it needs. The runner enforces this: anything beyond local in-scope reads cannot run in this build. */
+  caps: Capability[];
 }
 export const CATALOG: SkillItem[] = [
-  { id: 'claude-design', label: 'Claude Design', kind: 'prebuilt', summary: 'Design helper (placeholder name from your list). Not runnable in this build.', permissions: ['Read the shared contract', 'Write inside the member\'s own folder'], verified: false },
-  { id: 'cloudflare-security', label: 'Local secret scan', kind: 'prebuilt', summary: 'Deterministic local scan of one in-scope file for key-shaped strings, findings masked. (From your list as "cloudflare security" - this is not the Cloudflare service.)', permissions: ['Read files in the member\'s own folder'], verified: false },
-  { id: 'code-review', label: 'Local shared-name check', kind: 'skill', summary: 'Deterministic local check of one in-scope file: lists @shared names and compares them to CONTRACT.md. Not a general code review.', permissions: ['Read files in the member\'s own folder'], verified: false },
-  { id: 'docs-mcp', label: 'Docs lookup', kind: 'mcp', summary: 'Example MCP: looks up documentation. Not runnable in this build.', permissions: ['Network access to documentation sites'], verified: false },
+  { id: 'claude-design', label: 'Claude Design', kind: 'prebuilt', summary: 'Design helper (placeholder name from your list). Not runnable in this build.', permissions: ['Read the shared contract', 'Write inside the member\'s own folder'], verified: false, caps: ['read_scope', 'write_scope'] },
+  { id: 'cloudflare-security', label: 'Local secret scan', kind: 'prebuilt', summary: 'Deterministic local scan of one in-scope file for key-shaped strings, findings masked. (From your list as "cloudflare security" - this is not the Cloudflare service.)', permissions: ['Read files in the member\'s own folder'], verified: false, caps: ['read_scope'] },
+  { id: 'code-review', label: 'Local shared-name check', kind: 'skill', summary: 'Deterministic local check of one in-scope file: lists @shared names and compares them to CONTRACT.md. Not a general code review.', permissions: ['Read files in the member\'s own folder'], verified: false, caps: ['read_scope'] },
+  { id: 'docs-mcp', label: 'Docs outline', kind: 'mcp', summary: 'Example MCP-shaped tool: outlines one in-scope document (headings and line count). Runs locally; no network.', permissions: ['Read files in the member\'s own scope'], verified: false, caps: ['read_scope'] },
 ];
 export function searchCatalog(q: string): SkillItem[] {
   const s = q.trim().toLowerCase();
@@ -30,4 +33,9 @@ export function skillCanAccess(p: Project, userId: string, skillId: string, acti
   if (!s) return false;
   if (!s.approvedByOwner) return false;
   return canAccess(p, userId, action, path);
+}
+
+/** A tool can run locally only when every capability it declares is an in-scope read. */
+export function localRunnable(item: SkillItem): boolean {
+  return item.caps.length > 0 && item.caps.every((c) => c === 'read_scope');
 }
