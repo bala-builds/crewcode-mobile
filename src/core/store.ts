@@ -1,0 +1,225 @@
+import type { AppState, Project, ProviderLabel, AiAccess, TaskStatus, ChatMessage } from './types';
+import { PROVIDER_LABELS } from './types';
+import { canAccess, isOwner, isMember } from './permissions';
+import { findByCode, generateTeamCode } from './teamcode';
+import { defaultContract } from './contract';
+import { planTasks, validatePlan, toTasks, simulateBuild } from './orchestrator';
+import { CATALOG } from './skills';
+
+export type Result<T = {}> = ({ ok: true; state: AppState } & T) | { ok: false; error: string };
+
+let counter = 0;
+export function newId(prefix: string) { counter += 1; return `${prefix}-${Date.now().toString(36)}${counter.toString(36)}`; }
+
+const clone = <T,>(x: T): T => structuredClone(x);
+const fail = (error: string): { ok: false; error: string } => ({ ok: false, error });
+
+export const TEST_USERS = [
+  { id: 'u-ram', name: 'Ram' },
+  { id: 'u-seeta', name: 'Seeta' },
+  { id: 'u-hanuma', name: 'Hanuma' },
+  { id: 'u-outsider', name: 'Outsider' },
+];
+
+export function seedState(): AppState {
+  const s: AppState = { users: clone(TEST_USERS), projects: [], currentUserId: null };
+  const demo = createProjectRaw('u-ram', 'Habit Tracker', '# Habit Tracker\n\nA small app to track daily habits. Home screen with today\'s habits, a streak counter and an add button.\n', 'Keep code simple. Use plain TypeScript. Do not touch files outside your folder.\n', 'DEM-123');
+  demo.members.push({ userId: 'u-seeta', role: 'teammate', interests: ['frontend'], ai: { kind: 'owner' } });
+  s.projects.push(demo);
+  return s;
+}
+
+function createProjectRaw(ownerId: string, name: string, prd: string, instructions: string, code?: string): Project {
+  return {
+    id: newId('p'), name, ownerId,
+    team: { code: code ?? generateTeamCode(), revoked: false, expiresAt: null },
+    members: [{ userId: ownerId, role: 'owner', interests: [], ai: { kind: 'owner' } }],
+    files: { 'PRD.md': prd, 'AGENT_INSTRUCTIONS.md': instructions, 'CONTRACT.md': defaultContract(name) },
+    tasks: [], messages: [], ownerKeySharing: true, skills: [],
+  };
+}
+
+function mut(state: AppState, projectId: string, f: (p: Project) => string | void): Result {
+  const next = clone(state);
+  const p = next.projects.find((x) => x.id === projectId);
+  if (!p) return fail('Project not found.');
+  const err = f(p);
+  if (err) return fail(err);
+  return { ok: true, state: next };
+}
+
+export function signInAsTestUser(state: AppState, userId: string, name?: string): AppState {
+  const next = clone(state);
+  const trimmed = (name ?? '').trim();
+  if (trimmed) { const u = next.users.find((x) => x.id === userId); if (u) u.name = trimmed; }
+  next.currentUserId = userId;
+  return next;
+}
+
+export function registerName(state: AppState, name: string): Result<{ userId: string }> {
+  const n = name.trim();
+  if (n.length < 2) return fail('Enter at least 2 characters.');
+  if (n.length > 40) return fail('Keep the name under 40 characters.');
+  const next = clone(state);
+  const id = newId('u');
+  next.users.push({ id, name: n });
+  next.currentUserId = id;
+  return { ok: true, state: next, userId: id };
+}
+
+export function createProject(state: AppState, userId: string, name: string, prd: string, instructions: string): Result<{ projectId: string }> {
+  if (!state.users.some((u) => u.id === userId)) return fail('Unknown user.');
+  if (name.trim().length < 2) return fail('Give the project a name.');
+  if (prd.trim().length < 10) return fail('The master prompt or PRD is too short.');
+  const next = clone(state);
+  const p = createProjectRaw(userId, name.trim(), prd.trim() + '\n', instructions.trim() + '\n');
+  next.projects.push(p);
+  return { ok: true, state: next, projectId: p.id };
+}
+
+export function joinProject(state: AppState, userId: string, code: string, interests: string[]): Result<{ projectId: string }> {
+  const r = findByCode(state.projects, code, userId);
+  if (!r.ok) {
+    const msg = { not_found: 'No project has that code.', revoked: 'That code was turned off by the owner.', expired: 'That code has expired.', already_member: 'You are already on this project.' }[r.reason];
+    return fail(msg);
+  }
+  const clean = interests.map((i) => i.trim()).filter(Boolean);
+  if (clean.length === 0) return fail('Pick at least one interest.');
+  const next = clone(state);
+  const p = next.projects.find((x) => x.id === r.project.id)!;
+  p.members.push({ userId, role: 'teammate', interests: clean });
+  return { ok: true, state: next, projectId: p.id };
+}
+
+export function setAiAccess(state: AppState, projectId: string, userId: string, access: AiAccess): Result {
+  return mut(state, projectId, (p) => {
+    const m = p.members.find((x) => x.userId === userId);
+    if (!m) return 'You are not on this project.';
+    if (access.kind === 'owner') {
+      if (m.role !== 'owner' && !p.ownerKeySharing) return 'The owner has turned off sharing their AI model.';
+    } else if (!access.provider || !PROVIDER_LABELS.includes(access.provider as ProviderLabel)) return 'Pick a provider.';
+    m.ai = access.kind === 'owner' ? { kind: 'owner' } : { kind: 'own', provider: access.provider };
+  });
+}
+
+export function setOwnerKeySharing(state: AppState, projectId: string, userId: string, on: boolean): Result {
+  return mut(state, projectId, (p) => {
+    if (!isOwner(p, userId)) return 'Only the owner can change this.';
+    p.ownerKeySharing = on;
+    if (!on) for (const m of p.members) if (m.role !== 'owner' && m.ai?.kind === 'owner') m.ai = undefined; // takes effect at once
+  });
+}
+
+export function regenerateCode(state: AppState, projectId: string, userId: string): Result {
+  return mut(state, projectId, (p) => { if (!isOwner(p, userId)) return 'Only the owner can do this.'; p.team = { code: generateTeamCode(), revoked: false, expiresAt: null }; });
+}
+export function revokeCode(state: AppState, projectId: string, userId: string): Result {
+  return mut(state, projectId, (p) => { if (!isOwner(p, userId)) return 'Only the owner can do this.'; p.team.revoked = true; });
+}
+export function removeMember(state: AppState, projectId: string, userId: string, targetId: string): Result {
+  return mut(state, projectId, (p) => {
+    if (!isOwner(p, userId)) return 'Only the owner can remove people.';
+    if (targetId === p.ownerId) return 'The owner cannot be removed.';
+    p.members = p.members.filter((m) => m.userId !== targetId);
+    p.tasks = p.tasks.filter((t) => t.assigneeId !== targetId);
+  });
+}
+
+export function assignTasks(state: AppState, projectId: string, userId: string): Result<{ count: number }> {
+  const p0 = state.projects.find((x) => x.id === projectId);
+  if (!p0) return fail('Project not found.');
+  if (!isOwner(p0, userId)) return fail('Only the owner\'s AI can assign tasks.');
+  const team = p0.members.filter((m) => m.role === 'teammate'); // the owner already has the whole project
+  const plan = planTasks({ name: p0.name, files: p0.files, members: team }, state.users);
+  const v = validatePlan(plan, team);
+  if (!v.ok) return fail('The plan was rejected: ' + v.errors.join(' '));
+  const next = clone(state);
+  const p = next.projects.find((x) => x.id === projectId)!;
+  p.tasks = toTasks(plan, () => newId('t'));
+  const nm = (id: string) => next.users.find((u) => u.id === id)?.name ?? id;
+  p.messages.push({ id: newId('m'), authorId: 'ai', taskId: null, kind: 'ai_plan', at: Date.now(), text: 'Simulated plan:\n' + p.tasks.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
+  // Contract folder ownership is updated by the owner's AI, not by teammates.
+  p.files['CONTRACT.md'] = defaultContract(p.name, p.tasks.map((t) => ({ folder: t.folder, owner: nm(t.assigneeId) })));
+  return { ok: true, state: next, count: p.tasks.length };
+}
+
+export function postPrompt(state: AppState, projectId: string, userId: string, text: string, taskId: string | null): Result {
+  if (!text.trim()) return fail('Type a message first.');
+  return mut(state, projectId, (p) => {
+    if (!isMember(p, userId)) return 'You are not on this project.';
+    if (taskId) {
+      const t = p.tasks.find((x) => x.id === taskId);
+      if (!t || (t.assigneeId !== userId && !isOwner(p, userId))) return 'That task is not yours.';
+    }
+    p.messages.push({ id: newId('m'), authorId: userId, taskId, kind: 'prompt', text: text.trim(), at: Date.now() });
+  });
+}
+
+export function saveFile(state: AppState, projectId: string, userId: string, path: string, content: string): Result {
+  return mut(state, projectId, (p) => {
+    if (!canAccess(p, userId, 'write', path)) return `You cannot edit ${path}. It is outside your folder.`;
+    if (content.length > 200_000) return 'That file is too large.';
+    p.files[path] = content;
+  });
+}
+
+export function runBuild(state: AppState, projectId: string, userId: string, taskId: string, opts: { forceError?: boolean } = {}): Result {
+  const next = clone(state);
+  const p = next.projects.find((x) => x.id === projectId);
+  if (!p) return fail('Project not found.');
+  const t = p.tasks.find((x) => x.id === taskId);
+  if (!t) return fail('Task not found.');
+  if (t.assigneeId !== userId && !isOwner(p, userId)) return fail('That task is not yours.');
+  const me = p.members.find((m) => m.userId === userId);
+  const push = (m: Omit<ChatMessage, 'id' | 'at'>) => p.messages.push({ ...m, id: newId('m'), at: Date.now() });
+  if (!me?.ai) { push({ authorId: 'ai', taskId, kind: 'ai_error', text: 'Choose an AI model first (owner\'s model or your own key).' }); return { ok: true, state: next }; }
+  if (opts.forceError) { push({ authorId: 'ai', taskId, kind: 'ai_error', text: 'Simulated error. Nothing was changed. You can retry.' }); return { ok: true, state: next }; }
+  const out = simulateBuild(t, p.name);
+  const written: string[] = [];
+  for (const [path, content] of Object.entries(out)) {
+    // The AI acts for the task's assignee. It is held to the same rule as a person.
+    if (!canAccess(p, t.assigneeId, 'write', path)) { push({ authorId: 'ai', taskId, kind: 'ai_error', text: `Refused: ${path} is outside the task folder.` }); continue; }
+    p.files[path] = content; written.push(path);
+  }
+  t.status = 'in_progress';
+  push({ authorId: 'ai', taskId, kind: 'ai_build', text: `Simulated build finished for "${t.title}". No real AI was called.`, files: written });
+  return { ok: true, state: next };
+}
+
+export function setTaskStatus(state: AppState, projectId: string, userId: string, taskId: string, status: TaskStatus): Result {
+  return mut(state, projectId, (p) => {
+    const t = p.tasks.find((x) => x.id === taskId);
+    if (!t) return 'Task not found.';
+    if (t.assigneeId !== userId && !isOwner(p, userId)) return 'That task is not yours.';
+    t.status = status;
+  });
+}
+
+export function addSkill(state: AppState, projectId: string, userId: string, skillId: string): Result {
+  return mut(state, projectId, (p) => {
+    if (!isMember(p, userId)) return 'You are not on this project.';
+    if (!CATALOG.some((c) => c.id === skillId)) return 'Unknown item.';
+    if (p.skills.some((s) => s.id === skillId)) return 'Already added.';
+    p.skills.push({ id: skillId, addedBy: userId, approvedByOwner: isOwner(p, userId) });
+  });
+}
+export function approveSkill(state: AppState, projectId: string, userId: string, skillId: string): Result {
+  return mut(state, projectId, (p) => {
+    if (!isOwner(p, userId)) return 'Only the owner can approve.';
+    const s = p.skills.find((x) => x.id === skillId); if (!s) return 'Not found.'; s.approvedByOwner = true;
+  });
+}
+export function removeSkill(state: AppState, projectId: string, userId: string, skillId: string): Result {
+  return mut(state, projectId, (p) => {
+    const s = p.skills.find((x) => x.id === skillId); if (!s) return 'Not found.';
+    if (!isOwner(p, userId) && s.addedBy !== userId) return 'Only the owner or who added it can remove it.';
+    p.skills = p.skills.filter((x) => x.id !== skillId);
+  });
+}
+
+const KEY = 'crewcode-mobile-state-v1';
+export function save(state: AppState, storage: Pick<Storage, 'setItem'> = localStorage) { storage.setItem(KEY, JSON.stringify(state)); }
+export function load(storage: Pick<Storage, 'getItem'> = localStorage): AppState {
+  try { const raw = storage.getItem(KEY); if (raw) { const s = JSON.parse(raw) as AppState; if (Array.isArray(s.projects) && Array.isArray(s.users)) return s; } } catch { /* fall through */ }
+  return seedState();
+}

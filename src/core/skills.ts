@@ -1,0 +1,18 @@
+/**
+ * Placeholder catalog. These are the names you gave ("claude design", "cloudflare security") plus labelled examples.
+ * Nothing here is installed or runs. Availability, licence and what each really does are not verified (O8).
+ */
+export interface SkillItem {
+  id: string; label: string; kind: 'skill' | 'mcp' | 'prebuilt';
+  summary: string; permissions: string[]; verified: false;
+}
+export const CATALOG: SkillItem[] = [
+  { id: 'claude-design', label: 'Claude Design', kind: 'prebuilt', summary: 'Design helper (placeholder name from your list).', permissions: ['Read the shared contract', 'Write inside the member\'s own folder'], verified: false },
+  { id: 'cloudflare-security', label: 'Cloudflare Security', kind: 'prebuilt', summary: 'Security checks (placeholder name from your list).', permissions: ['Read files in the member\'s own folder'], verified: false },
+  { id: 'code-review', label: 'Code review', kind: 'skill', summary: 'Example skill: reviews a member\'s folder.', permissions: ['Read files in the member\'s own folder'], verified: false },
+  { id: 'docs-mcp', label: 'Docs lookup', kind: 'mcp', summary: 'Example MCP: looks up documentation.', permissions: ['Network access to documentation sites'], verified: false },
+];
+export function searchCatalog(q: string): SkillItem[] {
+  const s = q.trim().toLowerCase();
+  return s ? CATALOG.filter((c) => (c.label + ' ' + c.kind + ' ' + c.summary).toLowerCase().includes(s)) : CATALOG;
+}
