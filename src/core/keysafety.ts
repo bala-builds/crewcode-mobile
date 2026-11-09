@@ -10,7 +10,7 @@ const KEY_PATTERNS: RegExp[] = [
 ];
 
 export function maskSecret(s: string): string {
-  return s.length <= 6 ? 'â¢â¢â¢â¢' : s.slice(0, 3) + 'â¢â¢â¢â¢' + s.slice(-2);
+  return s.length <= 6 ? '****' : s.slice(0, 3) + '****' + s.slice(-2);
 }
 
 /** Masked matches found in the text. Empty array means clean. */
