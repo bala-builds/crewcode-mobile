@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { Api } from '../src/server/api';
 import type { AppState } from '../src/core/types';
 
-const FILE = new URL('./data.json', import.meta.url).pathname;
+const FILE = process.env.CREWCODE_DATA ?? new URL('./data.json', import.meta.url).pathname;
 let initial: AppState | undefined;
 try { initial = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { /* first run */ }
 const api = new Api(initial, (s) => fs.writeFileSync(FILE, JSON.stringify(s)));
@@ -17,4 +17,4 @@ http.createServer((req, res) => {
     let out; try { out = api.call(JSON.parse(body)); } catch { out = { ok: false, error: 'Bad request.' }; }
     res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out));
   });
-}).listen(8787, '127.0.0.1', () => console.log('CrewCode dev API on http://127.0.0.1:8787/api (test identities only)'));
+}).listen(Number(process.env.PORT ?? 8787), '127.0.0.1', () => console.log('CrewCode dev API on http://127.0.0.1:' + (process.env.PORT ?? 8787) + '/api (test identities only)'));
