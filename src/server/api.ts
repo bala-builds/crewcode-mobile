@@ -4,6 +4,7 @@ import type { AppState, Project } from '../core/types';
 import * as S from '../core/store';
 import { visibleFiles, visibleMessages, visibleTasks, visibleMembers, isMember, isOwner } from '../core/permissions';
 import { exportProject, restoreProject } from '../core/backup';
+import { planTasks } from '../core/orchestrator';
 import { deterministicBuild } from '../core/execution';
 
 export type ApiRequest = { as: string; op: string; args?: Record<string, any> };
@@ -43,6 +44,10 @@ function requireDeterministicBuild(projectName: string, folder: string, prompt: 
 
 export type AsyncBuildProvider = (task: import('../core/types').Task, project: { name: string; files: Record<string, string> }, prompt: string) => Promise<{ ok: true; message: string; files: Record<string, string> } | { ok: false; error: string }>;
 
+/** Planning provider: takes the project brief and roster, returns a task plan. The default is the
+ * deterministic local planner; a live provider stays approval-gated and is not wired here. Tests inject fakes. */
+export type AsyncPlanner = (project: { name: string; files: Record<string, string>; members: import('../core/types').Member[] }, users: import('../core/types').TestUser[]) => Promise<S.PlanOutcome>;
+
 export class Api {
   constructor(
     public state: AppState = S.seedState(),
@@ -50,6 +55,7 @@ export class Api {
     // The build provider is injectable so tests can delay or fail it. The default is the
     // deterministic local provider; a live provider stays approval-gated and is not wired here.
     private buildProvider: AsyncBuildProvider = async (t, pr, prompt) => deterministicBuild(pr.name, t.folder, prompt),
+    private planProvider: AsyncPlanner = async (pr, users) => ({ ok: true, plan: planTasks(pr, users) }),
   ) {}
 
   /**
@@ -58,9 +64,28 @@ export class Api {
    * A stopped run discards the provider result entirely - no late writes, no build message.
    */
   async callAsync(req: ApiRequest): Promise<ApiResponse> {
-    if (req.op !== 'runBuild') return this.call(req);
+    if (req.op !== 'runBuild' && req.op !== 'assignTasks') return this.call(req);
     const { as: u, args = {} } = req;
     if (!this.state.users.some((x) => x.id === u)) return { ok: false, error: 'Unknown test identity.' };
+    if (req.op === 'assignTasks') {
+      // Same boundary as task runs: start marks planning, the provider runs, and apply
+      // commits only if planning was not stopped meanwhile. A stopped plan discards the result.
+      const started = S.startPlanning(this.state, args.projectId, u);
+      if (!started.ok) return { ok: false, error: started.error };
+      this.state = started.state; this.persist(this.state);
+      const p = this.state.projects.find((x) => x.id === args.projectId)!;
+      const team = p.members.filter((m) => m.role === 'teammate');
+      let outcome: S.PlanOutcome;
+      try {
+        outcome = await this.planProvider({ name: p.name, files: p.files, members: team }, this.state.users);
+      } catch {
+        outcome = { ok: false, error: 'The provider could not be reached.' };
+      }
+      const applied = S.applyPlanning(this.state, args.projectId, outcome);
+      if (!applied.ok) return { ok: false, error: applied.error };
+      this.state = applied.state; this.persist(this.state);
+      return { ok: true, data: { count: applied.count ?? 0, discarded: !!applied.discarded } };
+    }
     const started = S.startTaskRun(this.state, args.projectId, u, args.taskId);
     if (!started.ok) return { ok: false, error: started.error };
     this.state = started.state; this.persist(this.state);
@@ -129,6 +154,7 @@ export class Api {
         return this.commit(r);
       }
       case 'cancelTaskRun': return this.commit(S.cancelTaskRun(st, args.projectId, u, args.taskId));
+      case 'cancelPlanning': return this.commit(S.cancelPlanning(st, args.projectId, u));
       case 'setTaskStatus': return this.commit(S.setTaskStatus(st, args.projectId, u, args.taskId, args.status));
       case 'submitTaskForReview': return this.commit(S.submitTaskForReview(st, args.projectId, u, args.taskId));
       case 'runIntegrationReview': return this.commit(S.runIntegrationReview(st, args.projectId, u, args.taskId));
