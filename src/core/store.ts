@@ -1,4 +1,4 @@
-import type { AppState, Project, ProviderLabel, AiAccess, TaskStatus, ChatMessage } from './types';
+import type { AppState, Project, ProviderLabel, AiAccess, Task, TaskStatus, ChatMessage } from './types';
 import { PROVIDER_LABELS } from './types';
 import { canAccess, isOwner, isMember } from './permissions';
 import { findByCode, generateTeamCode } from './teamcode';
@@ -127,19 +127,19 @@ export function removeMember(state: AppState, projectId: string, userId: string,
   });
 }
 
-export function assignTasks(state: AppState, projectId: string, userId: string): Result<{ count: number }> {
+export function assignTasks(state: AppState, projectId: string, userId: string, planTasksFn: typeof planTasks = planTasks, simulated = true): Result<{ count: number }> {
   const p0 = state.projects.find((x) => x.id === projectId);
   if (!p0) return fail('Project not found.');
   if (!isOwner(p0, userId)) return fail('Only the owner\'s AI can assign tasks.');
   const team = p0.members.filter((m) => m.role === 'teammate'); // the owner already has the whole project
-  const plan = planTasks({ name: p0.name, files: p0.files, members: team }, state.users);
+  const plan = planTasksFn({ name: p0.name, files: p0.files, members: team }, state.users);
   const v = validatePlan(plan, team);
   if (!v.ok) return fail('The plan was rejected: ' + v.errors.join(' '));
   const next = clone(state);
   const p = next.projects.find((x) => x.id === projectId)!;
   p.tasks = toTasks(plan, () => newId('t'));
   const nm = (id: string) => next.users.find((u) => u.id === id)?.name ?? id;
-  p.messages.push({ id: newId('m'), authorId: 'ai', taskId: null, kind: 'ai_plan', at: Date.now(), text: 'Simulated plan:\n' + p.tasks.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
+  p.messages.push({ id: newId('m'), authorId: 'ai', taskId: null, kind: 'ai_plan', at: Date.now(), text: (simulated ? 'Simulated plan:\n' : 'Plan:\n') + p.tasks.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
   // Contract folder ownership is updated by the owner's AI, not by teammates.
   p.files['CONTRACT.md'] = defaultContract(p.name, p.tasks.map((t) => ({ folder: t.folder, owner: nm(t.assigneeId) })));
   return { ok: true, state: next, count: p.tasks.length };
@@ -181,7 +181,13 @@ export function saveFile(state: AppState, projectId: string, userId: string, pat
   });
 }
 
-export function runBuild(state: AppState, projectId: string, userId: string, taskId: string, opts: { forceError?: boolean } = {}): Result {
+export function runBuild(
+  state: AppState,
+  projectId: string,
+  userId: string,
+  taskId: string,
+  opts: { forceError?: boolean; prompt?: string; build?: (task: Task, project: Pick<Project, 'name' | 'files'>, prompt: string) => { ok: true; message: string; files: Record<string, string> } | { ok: false; error: string }; simulated?: boolean } = {},
+): Result {
   const next = clone(state);
   const p = next.projects.find((x) => x.id === projectId);
   if (!p) return fail('Project not found.');
@@ -190,20 +196,33 @@ export function runBuild(state: AppState, projectId: string, userId: string, tas
   if (t.assigneeId !== userId && !isOwner(p, userId)) return fail('That task is not yours.');
   const me = p.members.find((m) => m.userId === userId);
   const push = (m: Omit<ChatMessage, 'id' | 'at'>) => p.messages.push({ ...m, id: newId('m'), at: Date.now() });
-  if (!me?.ai) { push({ authorId: 'ai', taskId, kind: 'ai_error', text: 'Choose an AI model first (owner\'s model or your own key).' }); return { ok: true, state: next }; }
-  if (opts.forceError) { push({ authorId: 'ai', taskId, kind: 'ai_error', text: 'Simulated error. Nothing was changed. You can retry.' }); return { ok: true, state: next }; }
-  const out = simulateBuild(t, p.name);
+  t.run = 'thinking'; delete t.runError;
+  if (!me?.ai) { t.run = 'failed'; t.runError = 'Choose an AI model first.'; push({ authorId: 'ai', taskId, kind: 'ai_error', text: "Choose an AI model first (owner model or your own key)." }); return { ok: true, state: next }; }
+  if (opts.forceError) { t.run = 'failed'; t.runError = 'Simulated error.'; push({ authorId: 'ai', taskId, kind: 'ai_error', text: 'Simulated error. Nothing was changed. You can retry.' }); return { ok: true, state: next }; }
+  const result = opts.build ? opts.build(t, { name: p.name, files: p.files }, opts.prompt ?? '') : { ok: true as const, message: `Simulated build finished for "${t.title}". No real AI was called.`, files: simulateBuild(t, p.name) };
+  if (!result.ok) { t.run = 'failed'; t.runError = result.error; push({ authorId: 'ai', taskId, kind: 'ai_error', text: result.error }); return { ok: true, state: next }; }
   const written: string[] = [];
-  for (const [path, content] of Object.entries(out)) {
+  for (const [path, content] of Object.entries(result.files)) {
     // The AI acts for the task's assignee. It is held to the same rule as a person.
-    if (!canAccess(p, t.assigneeId, 'write', path)) { push({ authorId: 'ai', taskId, kind: 'ai_error', text: `Refused: ${path} is outside the task folder.` }); continue; }
+    if (!canAccess(p, t.assigneeId, 'write', path)) { t.run = 'failed'; t.runError = `Refused: ${path} is outside the task folder.`; push({ authorId: 'ai', taskId, kind: 'ai_error', text: `Refused: ${path} is outside the task folder.` }); return { ok: true, state: next }; }
     p.files[path] = content; written.push(path);
     if (!p.fileRevs) p.fileRevs = {};
     p.fileRevs[path] = (p.fileRevs[path] ?? 0) + 1;
   }
-  t.status = 'in_progress';
-  push({ authorId: 'ai', taskId, kind: 'ai_build', text: `Simulated build finished for "${t.title}". No real AI was called.`, files: written });
+  t.status = 'in_progress'; t.run = 'idle'; delete t.runError;
+  push({ authorId: 'ai', taskId, kind: 'ai_build', text: (opts.simulated === false ? '' : 'Simulated build. ') + result.message, files: written });
   return { ok: true, state: next };
+}
+
+export function cancelTaskRun(state: AppState, projectId: string, userId: string, taskId: string): Result {
+  return mut(state, projectId, (p) => {
+    const t = p.tasks.find((x) => x.id === taskId);
+    if (!t) return 'Task not found.';
+    if (t.assigneeId !== userId && !isOwner(p, userId)) return 'That task is not yours.';
+    if (t.run !== 'thinking') return 'No run is active.';
+    t.run = 'failed'; t.runError = 'Stopped before a result arrived.';
+    p.messages.push({ id: newId('m'), authorId: 'ai', taskId, kind: 'ai_error', text: 'Stopped. Existing files were kept; nothing new was saved.', at: Date.now() });
+  });
 }
 
 export function setTaskStatus(state: AppState, projectId: string, userId: string, taskId: string, status: TaskStatus): Result {
