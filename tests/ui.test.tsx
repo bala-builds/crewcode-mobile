@@ -195,7 +195,7 @@ describe('Phase 1 owner journey and states', () => {
   });
 });
 
-describe('Phase 3 preview checks (simulated)', () => {
+describe('Phase 3 preview checks (web runtime)', () => {
   const rerenderWithHash = async (hash: string) => {
     act(() => root.unmount());
     host.remove();
@@ -226,7 +226,7 @@ describe('Phase 3 preview checks (simulated)', () => {
     await rerenderWithHash('#demo=seeta');
     await clickTab('Preview');
     expect(text()).toContain('frontend/index.html');
-    expect(text()).not.toContain('Simulated preview of CONTRACT');
+    expect(text()).not.toContain('Preview of CONTRACT');
   });
 });
 
