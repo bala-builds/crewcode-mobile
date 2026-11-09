@@ -394,8 +394,8 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
       // The file changed while the draft was stored: keep the draft and open the
       // conflict review instead of dropping the work.
       setText(draft.text); setRev(serverRev); setDirty(true); setConflict({ mine: draft.text });
-    } else if (draft && draft.text !== current) { setText(draft.text); setRev(serverRev); setDirty(true); }
-    else { setText(current); setRev(serverRev); setDirty(false); if (!conflict) setConflict(null); }
+    } else if (draft && draft.text !== current) { setText(draft.text); setRev(serverRev); setDirty(true); setConflict(null); }
+    else { setText(current); setRev(serverRev); setDirty(false); setConflict(null); }
   }, [path, p.files]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!path) return <div className="screen"><div className="empty">No files you can open yet.</div></div>;
   const editable = canWriteView(p, path);
@@ -414,7 +414,7 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
   const serverRev = p.fileRevs?.[path] ?? 0;
   return (
     <div className="screen">
-      <div className="files">{files.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => { setOpen(f); clearErr(); setConflict(null); }}>{f}</button>)}</div>
+      <div className="files">{files.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => { setOpen(f); clearErr(); }}>{f}</button>)}</div>
       <div className="row spread"><strong style={{ overflowWrap: 'anywhere' }}>{path}</strong><span className="tag">{editable ? 'editable' : 'read only'}</span></div>
       {!editable && <div className="note">You can read this file. Only the owner can change it.</div>}
       {conflict && (
@@ -422,7 +422,7 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
           <strong>Someone changed this file while you were editing.</strong>
           <p className="muted">Your edit was not saved. Review both versions, then choose. Nothing is overwritten silently.</p>
           <div className="muted">Their saved version:</div>
-          <pre className="editor" style={{ whiteSpace: 'pre-wrap', maxHeight: 140, overflow: 'auto' }}>{serverText.slice(0, 2000)}</pre>
+          <pre className="editor" style={{ whiteSpace: 'pre-wrap', minHeight: 0, maxHeight: 140, overflow: 'auto' }}>{serverText.slice(0, 2000)}</pre>
           <div className="row wrap" style={{ marginTop: 8 }}>
             <button className="small" onClick={() => { setText(serverText); setRev(serverRev); setDirty(false); setConflict(null); editMemory.delete(editKey(path)); persistEdits(); }}>Use their version</button>
             <button className="small primary" onClick={async () => { const r = await onSave(path, conflict.mine, serverRev); if (r?.ok) { setText(conflict.mine); setDirty(false); setConflict(null); editMemory.delete(editKey(path)); persistEdits(); } }}>Keep my version</button>
