@@ -3,6 +3,7 @@
 import type { AppState, Project } from '../core/types';
 import * as S from '../core/store';
 import { visibleFiles, visibleMessages, visibleTasks, visibleMembers, isMember, isOwner } from '../core/permissions';
+import { exportProject, restoreProject } from '../core/backup';
 
 export type ApiRequest = { as: string; op: string; args?: Record<string, any> };
 export type ApiResponse = { ok: true; data?: any } | { ok: false; error: string };
@@ -52,7 +53,7 @@ export class Api {
         const r = S.joinProject(st, u, args.code ?? '', args.interests ?? []);
         const out = this.commit(r); return out.ok && r.ok ? { ok: true, data: { projectId: r.projectId } } : out;
       }
-      case 'saveFile': return this.commit(S.saveFile(st, args.projectId, u, args.path, args.content));
+      case 'saveFile': return this.commit(S.saveFile(st, args.projectId, u, args.path, args.content, args.baseRev));
       case 'postPrompt': return this.commit(S.postPrompt(st, args.projectId, u, args.text, args.taskId ?? null));
       case 'assignTasks': return this.commit(S.assignTasks(st, args.projectId, u));
       case 'runBuild': return this.commit(S.runBuild(st, args.projectId, u, args.taskId, { forceError: !!args.forceError }));
@@ -62,6 +63,21 @@ export class Api {
       case 'regenerateCode': return this.commit(S.regenerateCode(st, args.projectId, u));
       case 'revokeCode': return this.commit(S.revokeCode(st, args.projectId, u));
       case 'removeMember': return this.commit(S.removeMember(st, args.projectId, u, args.targetId));
+      case 'addSkill': return this.commit(S.addSkill(st, args.projectId, u, args.skillId));
+      case 'approveSkill': return this.commit(S.approveSkill(st, args.projectId, u, args.skillId));
+      case 'removeSkill': return this.commit(S.removeSkill(st, args.projectId, u, args.skillId));
+      case 'runSkill': {
+        const r = S.runSkill(st, args.projectId, u, args.skillId, args.path ?? '');
+        const out = this.commit(r); return out.ok && r.ok ? { ok: true, data: { output: r.output } } : out;
+      }
+      case 'exportProject': {
+        const r = exportProject(st, args.projectId, u);
+        return r.ok ? { ok: true, data: { json: r.json } } : { ok: false, error: r.error };
+      }
+      case 'restoreProject': {
+        const r = restoreProject(st, u, args.json ?? '');
+        const out = this.commit(r); return out.ok && r.ok ? { ok: true, data: { projectId: r.projectId } } : out;
+      }
       default: return { ok: false, error: 'Unknown operation.' };
     }
   }
