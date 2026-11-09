@@ -103,3 +103,18 @@ describe('join limit through the API boundary', () => {
     expect(tv.teamExpiresAt).toBeUndefined();
   });
 });
+
+describe('mutation version counter (cross-session propagation)', () => {
+  it('every committed change bumps the version; views carry it', () => {
+    const { api, pid } = setup();
+    const v0 = (api.call({ as: 'u-ram', op: 'getVersion' }) as any).data.version as number;
+    api.call({ as: 'u-ram', op: 'setOwnerKeySharing', args: { projectId: pid, on: true } });
+    const v1 = (api.call({ as: 'u-seeta', op: 'getVersion' }) as any).data.version as number;
+    expect(v1).toBeGreaterThan(v0);
+    const view = (api.call({ as: 'u-seeta', op: 'getProject', args: { projectId: pid } }) as any).data;
+    expect(view.stateVersion).toBe(v1);
+    // A failed op does not bump the counter.
+    api.call({ as: 'u-seeta', op: 'revokeCode', args: { projectId: pid } });
+    expect((api.call({ as: 'u-ram', op: 'getVersion' }) as any).data.version).toBe(v1);
+  });
+});
