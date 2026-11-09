@@ -155,10 +155,10 @@ describe('Phase 1 owner journey and states', () => {
     setVal(document.querySelector('[aria-label="Search catalog"]') as HTMLInputElement, 'zzz-no-match');
     expect(text()).toContain('Nothing matches');
     setVal(document.querySelector('[aria-label="Search catalog"]') as HTMLInputElement, '');
-    // Owner adds Code review (approved at once) and runs it on PRD.md through the UI.
-    clickCardButton('Code review', 'Add');
+    // Owner adds Local shared-name check (approved at once) and runs it on PRD.md through the UI.
+    clickCardButton('Local shared-name check', 'Add');
     expect(text()).toContain('approved');
-    setVal(document.querySelector('[aria-label="File for Code review"]') as HTMLInputElement, 'PRD.md');
+    setVal(document.querySelector('[aria-label="File for Local shared-name check"]') as HTMLInputElement, 'PRD.md');
     click('Run');
     expect(text()).toContain('Review of PRD.md');
     click('Close');
@@ -169,10 +169,10 @@ describe('Phase 1 owner journey and states', () => {
     clickCard('Habit Tracker');
     click('Add');
     expect(text()).toContain('Starter catalog.');
-    clickCardButton('Code review', 'Add');
+    clickCardButton('Local shared-name check', 'Add');
     expect(text()).toContain('waiting for owner');
     // No run control while unapproved.
-    expect(document.querySelector('[aria-label="File for Code review"]')).toBeNull();
+    expect(document.querySelector('[aria-label="File for Local shared-name check"]')).toBeNull();
     click('Close');
   });
 });
