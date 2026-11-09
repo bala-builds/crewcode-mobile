@@ -35,6 +35,7 @@ function createProjectRaw(ownerId: string, name: string, prd: string, instructio
     team: { code: code ?? generateTeamCode(), revoked: false, expiresAt: null },
     members: [{ userId: ownerId, role: 'owner', interests: [], ai: { kind: 'owner' } }],
     files: { 'PRD.md': prd, 'AGENT_INSTRUCTIONS.md': instructions, 'CONTRACT.md': defaultContract(name) },
+    fileRevs: { 'PRD.md': 0, 'AGENT_INSTRUCTIONS.md': 0, 'CONTRACT.md': 0 },
     tasks: [], messages: [], ownerKeySharing: true, skills: [],
   };
 }
@@ -155,11 +156,27 @@ export function postPrompt(state: AppState, projectId: string, userId: string, t
   });
 }
 
-export function saveFile(state: AppState, projectId: string, userId: string, path: string, content: string): Result {
+export function fileRev(state: AppState, projectId: string, path: string): number {
+  const p = state.projects.find((x) => x.id === projectId);
+  return p?.fileRevs?.[path] ?? 0;
+}
+
+/**
+ * Write a file through the Phase 4 permission function, with optimistic conflict handling (Phase 8).
+ * Pass the revision you read; if the file changed since, the write is refused instead of
+ * silently overwriting the other edit. Omit baseRev only when overwriting blindly is intended.
+ */
+export function saveFile(state: AppState, projectId: string, userId: string, path: string, content: string, baseRev?: number): Result {
   return mut(state, projectId, (p) => {
     if (!canAccess(p, userId, 'write', path)) return `You cannot edit ${path}. It is outside your folder.`;
     if (content.length > 200_000) return 'That file is too large.';
+    if (!p.fileRevs) p.fileRevs = {}; // tolerate states saved before revisions existed
+    const current = p.fileRevs[path] ?? 0;
+    if (baseRev !== undefined && baseRev !== current) {
+      return `Conflict: ${path} changed while you were editing. Your edit was not saved; reload and try again.`;
+    }
     p.files[path] = content;
+    p.fileRevs[path] = current + 1;
   });
 }
 
@@ -180,6 +197,8 @@ export function runBuild(state: AppState, projectId: string, userId: string, tas
     // The AI acts for the task's assignee. It is held to the same rule as a person.
     if (!canAccess(p, t.assigneeId, 'write', path)) { push({ authorId: 'ai', taskId, kind: 'ai_error', text: `Refused: ${path} is outside the task folder.` }); continue; }
     p.files[path] = content; written.push(path);
+    if (!p.fileRevs) p.fileRevs = {};
+    p.fileRevs[path] = (p.fileRevs[path] ?? 0) + 1;
   }
   t.status = 'in_progress';
   push({ authorId: 'ai', taskId, kind: 'ai_build', text: `Simulated build finished for "${t.title}". No real AI was called.`, files: written });
