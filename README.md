@@ -5,9 +5,11 @@ A chat-first app where a team builds software together. The owner writes a maste
 ## Status: prototype, not the finished product
 **Real:** the rules. One permission function (`src/core/permissions.ts`) decides who can read or write which path. Team codes, interests, task planning, shared contract checks, owner-AI sharing, skill approval and local save are all tested (`npm test`).
 
-**Simulated:** all AI answers and builds, the preview (a sandboxed iframe of a generated page), skills and MCP catalog (placeholder names, nothing installed).
+**Simulated:** all AI answers and builds. The skills/MCP catalog uses placeholder names (the local tools themselves really run).
 
-**Not built:** real AI providers (Phases 5-6, needs keys the owner has not approved), real storage and a preview runtime (Phase 8), and authentication (Phase 10, built last). Provider names Gemini, NVIDIA, Grok, Claude and GPT are placeholders and are not verified integrations.
+**Real:** the preview runs the actual web file with scripts on in an opaque-origin iframe (no access to the app or its storage; network not blocked; not a secure runtime for untrusted code), and local tools run through a genuine MCP stdio server in a permission-restricted process.
+
+**Not built:** real AI providers (Phases 5-6, needs keys the owner has not approved), real storage (Phase 9, Drive wiring waits for sign-in), and authentication (Phase 11, built last). Provider names Gemini, NVIDIA, Grok, Claude and GPT are placeholders and are not verified integrations.
 
 ## Important limits
 - No real sign-in. You pick a test identity (Ram, Seeta, Hanuma, Outsider) or register a name. This is not a login.
