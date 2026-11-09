@@ -317,6 +317,23 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     const after = document.querySelector('.sheet .code')!.textContent!.trim();
     expect(after).not.toBe(before);
   });
+
+  it('owner configures expiry and join limit from the Team sheet', async () => {
+    await click('Ram');
+    await clickCard('Habit Tracker');
+    await click('Team');
+    // New codes start with the labeled test default window and no join limit.
+    expect(text()).toContain('This code expires on');
+    expect(text()).toContain('no limit');
+    await click('No expiry');
+    expect(text()).toContain('No expiry set.');
+    await click('5');
+    expect(text()).toContain('limit 5');
+    await click('No limit');
+    expect(text()).toContain('no limit');
+    await click('7 days');
+    expect(text()).toContain('This code expires on');
+  });
 });
 
 describe('Phase 9 states: drafts and unsaved edits survive a reload', () => {
