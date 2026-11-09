@@ -330,12 +330,12 @@ describe('Phase 9 states: drafts and unsaved edits survive a reload', () => {
     expect(text()).toContain('Unsaved changes');
   });
 
-  it('a stale edit draft is not restored after the file changed on the server', async () => {
+  it('a stale edit draft becomes an explicit conflict recovery, never silent loss', async () => {
     await click('Ram');
     await clickCard('Habit Tracker');
     await clickTab('Code');
     await click('PRD.md');
-    setVal(document.querySelector('textarea.editor') as HTMLTextAreaElement, '# stale draft');
+    setVal(document.querySelector('textarea.editor') as HTMLTextAreaElement, '# my kept draft');
     const list = await api.call({ as: 'u-ram', op: 'listProjects' });
     if (!list.ok) throw Error();
     const pid = (list.data as any[])[0].id;
@@ -351,7 +351,23 @@ describe('Phase 9 states: drafts and unsaved edits survive a reload', () => {
     await clickCard('Habit Tracker');
     await clickTab('Code');
     await click('PRD.md');
+    // The draft is kept, the server version is shown, and the user chooses explicitly.
+    expect((document.querySelector('textarea.editor') as HTMLTextAreaElement).value).toBe('# my kept draft');
+    expect(text()).toContain('changed this file while you were editing');
+    expect(text()).toContain('# server moved on');
+    await click('Use their version');
     expect((document.querySelector('textarea.editor') as HTMLTextAreaElement).value).toBe('# server moved on');
     expect(text()).not.toContain('Unsaved changes');
+    // and the stored draft is gone after the explicit choice
+    act(() => root.unmount());
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => { root.render(React.createElement(App, { client: new DirectClient(api) })); });
+    await flush();
+    await clickCard('Habit Tracker');
+    await clickTab('Code');
+    await click('PRD.md');
+    expect((document.querySelector('textarea.editor') as HTMLTextAreaElement).value).toBe('# server moved on');
   });
 });
