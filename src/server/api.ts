@@ -38,8 +38,46 @@ function requireDeterministicBuild(projectName: string, folder: string, prompt: 
   return deterministicBuild(projectName, folder, prompt);
 }
 
+export type AsyncBuildProvider = (task: import('../core/types').Task, project: { name: string; files: Record<string, string> }, prompt: string) => Promise<{ ok: true; message: string; files: Record<string, string> } | { ok: false; error: string }>;
+
 export class Api {
-  constructor(public state: AppState = S.seedState(), private persist: (s: AppState) => void = () => {}) {}
+  constructor(
+    public state: AppState = S.seedState(),
+    private persist: (s: AppState) => void = () => {},
+    // The build provider is injectable so tests can delay or fail it. The default is the
+    // deterministic local provider; a live provider stays approval-gated and is not wired here.
+    private buildProvider: AsyncBuildProvider = async (t, pr, prompt) => deterministicBuild(pr.name, t.folder, prompt),
+  ) {}
+
+  /**
+   * Async boundary for task runs (used by the HTTP server): start marks the task thinking,
+   * the provider runs, and apply commits only if the task was not stopped meanwhile.
+   * A stopped run discards the provider result entirely - no late writes, no build message.
+   */
+  async callAsync(req: ApiRequest): Promise<ApiResponse> {
+    if (req.op !== 'runBuild') return this.call(req);
+    const { as: u, args = {} } = req;
+    if (!this.state.users.some((x) => x.id === u)) return { ok: false, error: 'Unknown test identity.' };
+    const started = S.startTaskRun(this.state, args.projectId, u, args.taskId);
+    if (!started.ok) return { ok: false, error: started.error };
+    this.state = started.state; this.persist(this.state);
+    let result: Awaited<ReturnType<AsyncBuildProvider>>;
+    if (args.forceError) {
+      result = { ok: false, error: 'Simulated error. Nothing was changed. You can retry.' };
+    } else {
+      const p = this.state.projects.find((x) => x.id === args.projectId)!;
+      const t = p.tasks.find((x) => x.id === args.taskId)!;
+      try {
+        result = await this.buildProvider(t, { name: p.name, files: p.files }, typeof args.prompt === 'string' ? args.prompt : '');
+      } catch {
+        result = { ok: false, error: 'The provider could not be reached.' };
+      }
+    }
+    const applied = S.applyTaskRun(this.state, args.projectId, args.taskId, result, { simulated: true });
+    if (!applied.ok) return { ok: false, error: applied.error };
+    this.state = applied.state; this.persist(this.state);
+    return { ok: true, data: { discarded: !!applied.discarded } };
+  }
 
   private commit(r: S.Result<any>): ApiResponse {
     if (!r.ok) return { ok: false, error: r.error };
