@@ -2,7 +2,7 @@ import type { AppState, Project, ProviderLabel, AiAccess, Task, TaskStatus, Chat
 import { PROVIDER_LABELS } from './types';
 import { canAccess, isOwner, isMember } from './permissions';
 import { findByCode, generateTeamCode } from './teamcode';
-import { defaultContract } from './contract';
+import { defaultContract, integrationCheck, folderFingerprint } from './contract';
 import { planTasks, validatePlan, toTasks, simulateBuild } from './orchestrator';
 import { CATALOG, skillCanAccess } from './skills';
 import { scanForKeys } from './keysafety';
@@ -301,6 +301,53 @@ export function setTaskStatus(state: AppState, projectId: string, userId: string
     if (!t) return 'Task not found.';
     if (t.assigneeId !== userId && !isOwner(p, userId)) return 'That task is not yours.';
     t.status = status;
+  });
+}
+
+/**
+ * The assignee marks a done task ready to merge. The work stays a draft (unmerged) until
+ * the owner runs the integration check and accepts it. Re-submitting after requested
+ * changes resets the review so the owner checks the fixed source.
+ */
+export function submitTaskForReview(state: AppState, projectId: string, userId: string, taskId: string): Result {
+  return mut(state, projectId, (p) => {
+    const t = p.tasks.find((x) => x.id === taskId);
+    if (!t) return 'Task not found.';
+    if (t.assigneeId !== userId && !isOwner(p, userId)) return 'That task is not yours.';
+    if (t.review?.state === 'accepted') return 'This task is already merged.';
+    if (t.status !== 'done') return 'Mark the task done before submitting it for merge.';
+    t.review = { state: 'submitted', findings: [], fingerprint: '', at: Date.now() };
+  });
+}
+
+/** Owner-only: run the contract check on the submitted folder and record the result. */
+export function runIntegrationReview(state: AppState, projectId: string, userId: string, taskId: string): Result {
+  return mut(state, projectId, (p) => {
+    if (!isOwner(p, userId)) return 'Only the owner can run the integration check.';
+    const t = p.tasks.find((x) => x.id === taskId);
+    if (!t) return 'Task not found.';
+    if (!t.review) return 'The teammate has not submitted this task yet.';
+    if (t.review.state === 'accepted') return 'This task is already merged.';
+    const findings = integrationCheck(p.files['CONTRACT.md'] ?? '', p.files, t.folder);
+    t.review = { state: findings.length ? 'changes_requested' : 'ready', findings, fingerprint: folderFingerprint(p.fileRevs ?? {}, t.folder), at: Date.now() };
+  });
+}
+
+/**
+ * Owner-only: accept the merge. Refused while mismatches are open, and refused when the
+ * folder changed after the last clean check (the review is stale and must be re-run).
+ */
+export function acceptTaskMerge(state: AppState, projectId: string, userId: string, taskId: string): Result {
+  return mut(state, projectId, (p) => {
+    if (!isOwner(p, userId)) return 'Only the owner can merge.';
+    const t = p.tasks.find((x) => x.id === taskId);
+    if (!t) return 'Task not found.';
+    const r = t.review;
+    if (!r || r.state === 'submitted') return 'Run the integration check before merging.';
+    if (r.state === 'accepted') return 'This task is already merged.';
+    if (r.state === 'changes_requested') return 'The integration check reported mismatches. They must be fixed and re-checked first.';
+    if (r.fingerprint !== folderFingerprint(p.fileRevs ?? {}, t.folder)) return 'The folder changed since the last check. Run the integration check again.';
+    t.review = { ...r, state: 'accepted', at: Date.now() };
   });
 }
 
