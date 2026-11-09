@@ -21,7 +21,18 @@ type UserInfo = { id: string; name: string };
 
 const hashParams = () => new URLSearchParams(location.hash.slice(1));
 const tabMemory = new Map<string, Tab>(); // tab position survives leaving and returning to a project
-const draftMemory = new Map<string, string>(); // composer text survives going back and returning
+const DRAFT_KEY = 'crewcode-mobile-drafts-v1'; // unsent composer text survives reloads and offline gaps
+const draftMemory = new Map<string, string>();
+try { const raw = localStorage.getItem(DRAFT_KEY); if (raw) for (const [k, v] of Object.entries(JSON.parse(raw))) if (typeof v === 'string') draftMemory.set(k, v); } catch { /* ignore */ }
+const persistDrafts = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(Object.fromEntries(draftMemory))); } catch { /* ignore */ } };
+
+// Unsaved code edits survive a reload, keyed by user/project/path with the revision they were
+// based on. A draft is only restored when the server still has that revision; otherwise the
+// normal conflict flow shows both versions.
+const EDIT_KEY = 'crewcode-mobile-edits-v1';
+const editMemory = new Map<string, { text: string; rev: number }>();
+try { const raw = localStorage.getItem(EDIT_KEY); if (raw) for (const [k, v] of Object.entries(JSON.parse(raw))) if (v && typeof (v as any).text === 'string' && typeof (v as any).rev === 'number') editMemory.set(k, v as any); } catch { /* ignore */ }
+const persistEdits = () => { try { localStorage.setItem(EDIT_KEY, JSON.stringify(Object.fromEntries(editMemory))); } catch { /* ignore */ } };
 const INTERESTS = ['frontend', 'backend', 'AI features', 'testing'];
 const ME_KEY = 'crewcode-mobile-identity-v1';
 
@@ -281,10 +292,11 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr }: { me: Me; 
   const [tab, setTabState] = useState<Tab>((hashParams().get('tab') as Tab) || tabMemory.get(pid) || 'chat');
   const setTab = (t: Tab) => { tabMemory.set(pid, t); setTabState(t); };
   const [draft, setDraftState] = useState(() => draftMemory.get(pid) ?? '');
-  const setDraft = (d: string) => { draftMemory.set(pid, d); setDraftState(d); };
+  const setDraft = (d: string) => { draftMemory.set(pid, d); persistDrafts(); setDraftState(d); };
   const [sheet, setSheet] = useState<null | 'team' | 'skills'>((hashParams().get('sheet') as 'team' | 'skills') || null); const [q, setQ] = useState(''); const [open, setOpen] = useState<string | null>(null);
   const [thread, setThread] = useState<string | null>(null);
   const [backupJson, setBackupJson] = useState('');
+  const editKey = (path: string) => `${me.id}:${pid}:${path}`;
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const p = view && view.id === pid ? view : null;
   if (!p) return <div className="screen">Loading...</div>;
@@ -308,7 +320,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr }: { me: Me; 
       </div>
       {tab === 'chat' && <ChatView p={p} user={me.id} nameOf={nameOf} msgs={msgs} tasks={tasks} owner={owner} thread={activeThread} setThread={setThread}
         onAssign={() => actOp('assignTasks', { projectId: pid }, pid)} onBuild={(id: string, force: boolean) => actOp('runBuild', { projectId: pid, taskId: id, forceError: force, prompt: draftMemory.get(pid) ?? '' }, pid)} onCancel={(id: string) => actOp('cancelTaskRun', { projectId: pid, taskId: id }, pid)} openCode={(f: string) => { setOpen(f); setTab('code'); }} err={err} />}
-      {tab === 'code' && <CodeView p={p} open={open} setOpen={setOpen} onSave={(path, c, rev) => actOp('saveFile', { projectId: pid, path, content: c, baseRev: rev }, pid)} reload={() => load()} err={err} clearErr={clearErr} />}
+      {tab === 'code' && <CodeView p={p} open={open} setOpen={setOpen} editKey={editKey} onSave={(path, c, rev) => actOp('saveFile', { projectId: pid, path, content: c, baseRev: rev }, pid)} reload={() => load()} err={err} clearErr={clearErr} />}
       {tab === 'preview' && <PreviewView p={p} />}
       {tab === 'tasks' && <TasksView p={p} nameOf={nameOf} onStatus={(id, s) => actOp('setTaskStatus', { projectId: pid, taskId: id, status: s }, pid)} err={err} />}
       {tab === 'chat' && (
@@ -369,18 +381,25 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, onAs
   );
 }
 
-function CodeView({ p, open, setOpen, onSave, reload, err, clearErr }: { p: ProjectView; open: string | null; setOpen: (f: string | null) => void; onSave: (path: string, c: string, rev: number) => Promise<any>; reload: () => Promise<unknown>; err: string | null; clearErr: () => void }) {
+function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: { p: ProjectView; open: string | null; setOpen: (f: string | null) => void; editKey: (path: string) => string; onSave: (path: string, c: string, rev: number) => Promise<any>; reload: () => Promise<unknown>; err: string | null; clearErr: () => void }) {
   const files = Object.keys(p.files).sort();
   const path = open && files.includes(open) ? open : files.find((f) => canWriteView(p, f)) ?? files[0] ?? null;
   const [text, setText] = useState(''); const [dirty, setDirty] = useState(false); const [rev, setRev] = useState(0);
   const [conflict, setConflict] = useState<{ mine: string } | null>(null);
-  useEffect(() => { setText(path ? p.files[path] ?? '' : ''); setRev(path ? p.fileRevs?.[path] ?? 0 : 0); setDirty(false); if (!conflict) setConflict(null); }, [path, p.files]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const serverRev = path ? p.fileRevs?.[path] ?? 0 : 0;
+    const draft = path ? editMemory.get(editKey(path)) : undefined;
+    if (draft && draft.rev === serverRev && draft.text !== (p.files[path!] ?? '')) { setText(draft.text); setRev(serverRev); setDirty(true); }
+    else { setText(path ? p.files[path] ?? '' : ''); setRev(serverRev); setDirty(false); }
+    if (!conflict) setConflict(null);
+  }, [path, p.files]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!path) return <div className="screen"><div className="empty">No files you can open yet.</div></div>;
   const editable = canWriteView(p, path);
   const t = p.tasks[0];
   const findings = p.role !== 'owner' && t ? integrationCheck(p.files['CONTRACT.md'], p.files, t.folder) : [];
   const save = async () => {
     const r = await onSave(path, text, rev);
+    if (r?.ok) { editMemory.delete(editKey(path)); persistEdits(); }
     if (r && !r.ok && typeof r.error === 'string' && r.error.startsWith('Conflict:')) {
       const fresh = await reload(); // pull the other person's version for review; never overwrite silently
       void fresh;
@@ -401,12 +420,12 @@ function CodeView({ p, open, setOpen, onSave, reload, err, clearErr }: { p: Proj
           <div className="muted">Their saved version:</div>
           <pre className="editor" style={{ whiteSpace: 'pre-wrap', maxHeight: 140, overflow: 'auto' }}>{serverText.slice(0, 2000)}</pre>
           <div className="row wrap" style={{ marginTop: 8 }}>
-            <button className="small" onClick={() => { setText(serverText); setRev(serverRev); setDirty(false); setConflict(null); }}>Use their version</button>
-            <button className="small primary" onClick={async () => { const r = await onSave(path, conflict.mine, serverRev); if (r?.ok) { setText(conflict.mine); setDirty(false); setConflict(null); } }}>Keep my version</button>
+            <button className="small" onClick={() => { setText(serverText); setRev(serverRev); setDirty(false); setConflict(null); editMemory.delete(editKey(path)); persistEdits(); }}>Use their version</button>
+            <button className="small primary" onClick={async () => { const r = await onSave(path, conflict.mine, serverRev); if (r?.ok) { setText(conflict.mine); setDirty(false); setConflict(null); editMemory.delete(editKey(path)); persistEdits(); } }}>Keep my version</button>
           </div>
         </div>
       )}
-      <textarea className="editor" aria-label={'Contents of ' + path} value={text} readOnly={!editable} onChange={(e) => { setText(e.target.value); setDirty(true); clearErr(); }} />
+      <textarea className="editor" aria-label={'Contents of ' + path} value={text} readOnly={!editable} onChange={(e) => { setText(e.target.value); setDirty(true); clearErr(); editMemory.set(editKey(path), { text: e.target.value, rev }); persistEdits(); }} />
       <Err text={err} />
       {findings.length > 0 && <div className="note">Integration check: {findings.map((f) => `${f.name} in ${f.path} is not in CONTRACT.md`).join('. ')}</div>}
       <div className="row" style={{ marginTop: 8 }}><button className="primary" disabled={!editable || !dirty} onClick={save}>Save</button>{dirty && <span className="muted">Unsaved changes</span>}</div>
@@ -519,4 +538,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-}
+                                                                       }
