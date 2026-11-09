@@ -34,3 +34,17 @@ Screenshot helper: open `/#demo=ram&tab=chat` or `/#demo=seeta&tab=code` (seeded
 - `tests` permission and flow tests
 - `docs/screenshots` checked mobile views (360 and 390 px wide)
 - `BUGLOG.md` bugs found and fixed
+
+
+### Repeatable local browser check (no CI)
+
+Start from the repository root. Requires installed Chrome at /usr/bin/google-chrome and an optional puppeteer-core driver. Keep that driver outside this app's dependencies if desired:
+
+```sh
+npm install --prefix /tmp/crewcode-browser-driver --no-audit --no-fund puppeteer-core
+CREWCODE_BROWSER_DRIVER=/tmp/crewcode-browser-driver/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js node scripts/browser-e2e.mjs
+```
+
+The script builds and starts the local API and Vite on loopback ports 8787 and 5173, uses temporary JSON state, checks two isolated browser identities, and stops both processes. Ports must be free. It saves screenshots/report under shots/http-e2e (git-ignored). No provider calls or external account access. Browser viewport is 390x844, not a real-phone test.
+
+Local limits: 1 MB/request, 300 API requests/minute per dev server, 15s request timeout. The phone UI needs both `npm run server` and `npm run dev`; Vite proxies /api to 127.0.0.1:8787. Without the API, it shows an error with retry. Updates from another session appear after re-entering the project or reloading; live sync is not built. Preview iframe is not a network firewall or a secure untrusted-code runtime. Do not deploy this unauthenticated development app publicly.
