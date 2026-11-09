@@ -455,6 +455,20 @@ function TasksView({ p, nameOf, onStatus, err }: { p: ProjectView; nameOf: (id: 
     <div className="screen">
       {p.role !== 'owner' && <div className="note">You see only your own tasks.</div>}
       <Err text={err} />
+      {p.role === 'owner' && p.tasks.length > 0 && (
+        <div className="card">
+          <strong>Integration review</strong>
+          <p className="muted">Each folder is checked against CONTRACT.md before its work counts as merged into the project.</p>
+          {p.tasks.map((t) => {
+            const findings = integrationCheck(p.files['CONTRACT.md'] ?? '', p.files, t.folder);
+            return <div key={t.id} className={findings.length ? 'err' : 'muted'} role={findings.length ? 'alert' : undefined}>
+              {findings.length === 0
+                ? `${t.folder} (${nameOf(t.assigneeId)}): fits the contract.`
+                : `${t.folder} (${nameOf(t.assigneeId)}): ${findings.map((f) => `${f.name} in ${f.path}`).join(', ')} - not in CONTRACT.md`}
+            </div>;
+          })}
+        </div>
+      )}
       {p.tasks.length === 0 && <div className="empty">No tasks yet.</div>}
       {p.tasks.map((t) => (
         <div key={t.id} className="card">
