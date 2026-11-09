@@ -181,30 +181,56 @@ export function saveFile(state: AppState, projectId: string, userId: string, pat
   });
 }
 
-export function runBuild(
-  state: AppState,
-  projectId: string,
-  userId: string,
-  taskId: string,
-  opts: { forceError?: boolean; prompt?: string; build?: (task: Task, project: Pick<Project, 'name' | 'files'>, prompt: string) => { ok: true; message: string; files: Record<string, string> } | { ok: false; error: string }; simulated?: boolean } = {},
-): Result {
+export type BuildFn = (task: Task, project: Pick<Project, 'name' | 'files'>, prompt: string) => { ok: true; message: string; files: Record<string, string> } | { ok: false; error: string };
+
+/** Marks a task run as started. Refuses a concurrent second run (retry race guard). */
+export function startTaskRun(state: AppState, projectId: string, userId: string, taskId: string): Result {
   const next = clone(state);
   const p = next.projects.find((x) => x.id === projectId);
   if (!p) return fail('Project not found.');
   const t = p.tasks.find((x) => x.id === taskId);
   if (!t) return fail('Task not found.');
   if (t.assigneeId !== userId && !isOwner(p, userId)) return fail('That task is not yours.');
+  if (t.run === 'thinking') return fail('That task is already running. Stop it or wait for it to finish.');
   const me = p.members.find((m) => m.userId === userId);
-  const push = (m: Omit<ChatMessage, 'id' | 'at'>) => p.messages.push({ ...m, id: newId('m'), at: Date.now() });
+  if (!me?.ai) {
+    t.run = 'failed'; t.runError = 'Choose an AI model first.';
+    p.messages.push({ id: newId('m'), authorId: 'ai', taskId, kind: 'ai_error', text: 'Choose an AI model first (owner model or your own key).', at: Date.now() });
+    return { ok: true, state: next };
+  }
   t.run = 'thinking'; delete t.runError;
-  if (!me?.ai) { t.run = 'failed'; t.runError = 'Choose an AI model first.'; push({ authorId: 'ai', taskId, kind: 'ai_error', text: "Choose an AI model first (owner model or your own key)." }); return { ok: true, state: next }; }
-  if (opts.forceError) { t.run = 'failed'; t.runError = 'Simulated error.'; push({ authorId: 'ai', taskId, kind: 'ai_error', text: 'Simulated error. Nothing was changed. You can retry.' }); return { ok: true, state: next }; }
-  const result = opts.build ? opts.build(t, { name: p.name, files: p.files }, opts.prompt ?? '') : { ok: true as const, message: `Simulated build finished for "${t.title}". No real AI was called.`, files: simulateBuild(t, p.name) };
-  if (!result.ok) { t.run = 'failed'; t.runError = result.error; push({ authorId: 'ai', taskId, kind: 'ai_error', text: result.error }); return { ok: true, state: next }; }
+  return { ok: true, state: next };
+}
+
+/**
+ * Applies a finished run. If the task was stopped while the provider was still working,
+ * the result is discarded: no files change, no build message is posted. Late writes never land.
+ */
+export function applyTaskRun(
+  state: AppState, projectId: string, taskId: string,
+  result: { ok: true; message: string; files: Record<string, string> } | { ok: false; error: string },
+  opts: { simulated?: boolean } = {},
+): Result<{ discarded?: boolean }> {
+  const next = clone(state);
+  const p = next.projects.find((x) => x.id === projectId);
+  if (!p) return fail('Project not found.');
+  const t = p.tasks.find((x) => x.id === taskId);
+  if (!t) return fail('Task not found.');
+  if (t.run !== 'thinking') return { ok: true, state: next, discarded: true };
+  const push = (m: Omit<ChatMessage, 'id' | 'at'>) => p.messages.push({ ...m, id: newId('m'), at: Date.now() });
+  if (!result.ok) {
+    t.run = 'failed'; t.runError = result.error;
+    push({ authorId: 'ai', taskId, kind: 'ai_error', text: result.error });
+    return { ok: true, state: next };
+  }
   const written: string[] = [];
   for (const [path, content] of Object.entries(result.files)) {
     // The AI acts for the task's assignee. It is held to the same rule as a person.
-    if (!canAccess(p, t.assigneeId, 'write', path)) { t.run = 'failed'; t.runError = `Refused: ${path} is outside the task folder.`; push({ authorId: 'ai', taskId, kind: 'ai_error', text: `Refused: ${path} is outside the task folder.` }); return { ok: true, state: next }; }
+    if (!canAccess(p, t.assigneeId, 'write', path)) {
+      t.run = 'failed'; t.runError = `Refused: ${path} is outside the task folder.`;
+      push({ authorId: 'ai', taskId, kind: 'ai_error', text: `Refused: ${path} is outside the task folder.` });
+      return { ok: true, state: next };
+    }
     p.files[path] = content; written.push(path);
     if (!p.fileRevs) p.fileRevs = {};
     p.fileRevs[path] = (p.fileRevs[path] ?? 0) + 1;
@@ -212,6 +238,28 @@ export function runBuild(
   t.status = 'in_progress'; t.run = 'idle'; delete t.runError;
   push({ authorId: 'ai', taskId, kind: 'ai_build', text: (opts.simulated === false ? '' : 'Simulated build. ') + result.message, files: written });
   return { ok: true, state: next };
+}
+
+/** Synchronous composition used by tests and the demo seed: start, run the build, apply. */
+export function runBuild(
+  state: AppState,
+  projectId: string,
+  userId: string,
+  taskId: string,
+  opts: { forceError?: boolean; prompt?: string; build?: BuildFn; simulated?: boolean } = {},
+): Result {
+  const started = startTaskRun(state, projectId, userId, taskId);
+  if (!started.ok) return started;
+  let s1 = started.state;
+  if (opts.forceError) {
+    const r = applyTaskRun(s1, projectId, taskId, { ok: false, error: 'Simulated error. Nothing was changed. You can retry.' });
+    return r.ok ? { ok: true, state: r.state } : r;
+  }
+  const p = s1.projects.find((x) => x.id === projectId)!;
+  const t = p.tasks.find((x) => x.id === taskId)!;
+  const result = opts.build ? opts.build(t, { name: p.name, files: p.files }, opts.prompt ?? '') : { ok: true as const, message: `Simulated build finished for "${t.title}". No real AI was called.`, files: simulateBuild(t, p.name) };
+  const applied = applyTaskRun(s1, projectId, taskId, result, { simulated: opts.simulated });
+  return applied.ok ? { ok: true, state: applied.state } : applied;
 }
 
 export function cancelTaskRun(state: AppState, projectId: string, userId: string, taskId: string): Result {
