@@ -1,6 +1,7 @@
 /**
  * Placeholder catalog. These are the names you gave ("claude design", "cloudflare security") plus labelled examples.
- * Nothing here is installed or runs. Availability, licence and what each really does are not verified (O8).
+ * Availability, licence and what each really does are not verified (O8). Items whose declared capabilities are
+ * only in-scope reads run locally as pure transforms; the rest are listed with what they would need.
  */
 export type Capability = 'read_scope' | 'write_scope' | 'network' | 'execute';
 export interface SkillItem {
