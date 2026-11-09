@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { teamState, ok } from './helpers';
-import { seedState, createProject, joinProject, revokeCode, regenerateCode, setAiAccess, setOwnerKeySharing, removeMember, assignTasks, runBuild, save, load, registerName, addSkill, approveSkill, removeSkill } from '../src/core/store';
+import { seedState, createProject, joinProject, revokeCode, regenerateCode, setTeamCodeExpiry, setTeamJoinLimit, setAiAccess, setOwnerKeySharing, removeMember, assignTasks, runBuild, save, load, registerName, addSkill, approveSkill, removeSkill } from '../src/core/store';
 import { generateTeamCode } from '../src/core/teamcode';
 import { planTasks, validatePlan } from '../src/core/orchestrator';
 import { integrationCheck, parseSharedNames } from '../src/core/contract';
@@ -50,6 +50,42 @@ describe('create and join', () => {
     expect(g.state.projects[0].team.code).not.toBe('DEM-123');
     expect(g.state.projects[0].team.expiresAt!).toBeGreaterThan(Date.now());
     expect(joinProject(g.state, 'u-hanuma', g.state.projects[0].team.code, ['x']).ok).toBe(true);
+  });
+  it('owner configures code expiry: clearing expiry reopens an expired code', () => {
+    const s = seedState(); const p = s.projects[0];
+    p.team.expiresAt = Date.now() - 1000; // force expiry
+    expect(joinProject(s, 'u-hanuma', 'DEM-123', ['x']).ok).toBe(false);
+    expect(setTeamCodeExpiry(s, p.id, 'u-seeta', null).ok).toBe(false); // teammate cannot
+    const cleared = ok(setTeamCodeExpiry(s, p.id, 'u-ram', null));
+    expect(cleared.state.projects[0].team.expiresAt).toBeNull();
+    expect(joinProject(cleared.state, 'u-hanuma', 'DEM-123', ['x']).ok).toBe(true); // code itself unchanged
+    const extended = ok(setTeamCodeExpiry(s, p.id, 'u-ram', 1));
+    expect(extended.state.projects[0].team.expiresAt!).toBeGreaterThan(Date.now());
+    expect(setTeamCodeExpiry(s, p.id, 'u-ram', 0).ok).toBe(false);
+    expect(setTeamCodeExpiry(s, p.id, 'u-ram', 400).ok).toBe(false);
+  });
+  it('owner join limit: boundary refusal, member rejoin keeps its message, limit removal reopens', () => {
+    let s = seedState(); const pid = s.projects[0].id;
+    expect(setTeamJoinLimit(s, pid, 'u-seeta', 1).ok).toBe(false); // teammate cannot
+    expect(setTeamJoinLimit(s, pid, 'u-ram', 0).ok).toBe(false);
+    expect(setTeamJoinLimit(s, pid, 'u-ram', 1.5).ok).toBe(false);
+    s = ok(setTeamJoinLimit(s, pid, 'u-ram', 1)).state;
+    // Seeta is already a member and does not count; the limit counts joins, not members.
+    s = ok(joinProject(s, 'u-hanuma', 'DEM-123', ['x'])).state; // uses the one join
+    expect(s.projects[0].team.joinsUsed).toBe(1);
+    const j2 = joinProject(s, 'u-outsider', 'DEM-123', ['y']);
+    expect(j2.ok).toBe(false);
+    if (j2.ok) throw Error();
+    expect(j2.error).toContain('join limit');
+    // An existing member who tries again still gets already-member, not the limit message.
+    const j3 = joinProject(s, 'u-hanuma', 'DEM-123', ['z']);
+    expect(j3.ok).toBe(false);
+    if (j3.ok) throw Error();
+    expect(j3.error).toContain('already');
+    // Concurrent-looking attempt from stale state is not a path the server serves: each API
+    // call commits before the next reads, so the boundary holds strictly (api-level check below).
+    s = ok(setTeamJoinLimit(s, pid, 'u-ram', null)).state;
+    expect(joinProject(s, 'u-outsider', 'DEM-123', ['y']).ok).toBe(true);
   });
   it('registers a name with validation', () => {
     expect(registerName(seedState(), 'A').ok).toBe(false);
