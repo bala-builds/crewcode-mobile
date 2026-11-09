@@ -14,7 +14,7 @@ Phase numbers follow the private phase plan; names here describe what each area 
 | Chat UI | Owner and teammate chat, error with retry, code button | Demo | docs/screenshots |
 | Skills / MCP (Ph 4) | Search, add, owner approval | Demo (placeholder catalog, nothing installed) | src/core/skills.ts |
 | Preview | Sandboxed preview of frontend file | Demo (static iframe, no runtime) | UI Preview tab |
-| Providers (Ph 5-6) | Real Gemini/NVIDIA/Grok/Claude/GPT calls with owner or own key | **Not built.** Needs a provider key the owner has not approved | - |
+| Providers (Ph 5-6) | Real provider calls with owner or own key | Adapter + safety tests built against a fake fetch (call cap, no key in errors, 401/402/429 handling). **No live call made.** Needs approved key use | src/core/llm.ts, tests/llm.test.ts |
 | Key handling | Keys memory-only, masked, never saved | Met in the client prototype; server-side key use not built | src/core/providers.ts |
 | Storage (Ph 8) | Durable code storage and metadata store | Local JSON file for the dev API only. Hosted storage/DB Not built (needs approval per change) | server/index.ts |
 | Preview runtime (Ph 8) | Run teammates' code safely | Not built | - |
@@ -23,3 +23,9 @@ Phase numbers follow the private phase plan; names here describe what each area 
 | Native vs web | Decision O3 | Open | - |
 
 Do not deploy this publicly before authentication and a hosted server exist.
+
+## Working-flow test (owner to teammate)
+`tests/e2e.test.ts` runs create project, invite code, wrong code refused, two teammates join, AI plan, build, edit own folder, refused outside folder, teammate view hides other folders, revoke code, remove member. It runs through the server-side API with test identities.
+
+Counts as working: team code lifecycle, joining, folder isolation, per-user redaction, saves, removal.
+Does **not** count as working: task planning and builds (rule-based simulation), preview, skills, any real AI call, and authentication (excluded). The phone UI is not yet wired to this API, so the full tap-through flow on a device is still untested.
