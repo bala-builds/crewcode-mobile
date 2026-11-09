@@ -14,15 +14,23 @@ export interface ClientData {
 export class HttpClient implements ClientData {
   constructor(public base: string) {}
   async call(req: ApiRequest): Promise<ApiResponse> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
     try {
       const res = await fetch(this.base, {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(req),
       });
-      return (await res.json()) as ApiResponse;
+      const out = await res.json();
+      if (!out || typeof out.ok !== 'boolean') return { ok: false, error: 'Invalid response from the local server.' };
+      if (!res.ok && out.ok) return { ok: false, error: 'The local server rejected the request.' };
+      return out as ApiResponse;
     } catch {
       return { ok: false, error: 'The local server could not be reached. Start it with: npm run server' };
+    } finally {
+      clearTimeout(timer);
     }
   }
 }
