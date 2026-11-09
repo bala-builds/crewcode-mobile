@@ -11,7 +11,7 @@ export type ApiResponse = { ok: true; data?: any } | { ok: false; error: string 
 
 export type ProjectView = {
   id: string; name: string; role: 'owner' | 'teammate'; ownerKeySharing: boolean;
-  teamCode?: string; teamRevoked?: boolean; teamExpiresAt?: number | null; files: Record<string, string>; fileRevs: Record<string, number>;
+  teamCode?: string; teamRevoked?: boolean; teamExpiresAt?: number | null; teamMaxJoins?: number | null; teamJoinsUsed?: number; files: Record<string, string>; fileRevs: Record<string, number>;
   tasks: ReturnType<typeof visibleTasks>;
   messages: ReturnType<typeof visibleMessages>; members: ReturnType<typeof visibleMembers>;
   skills: Project['skills'];
@@ -28,6 +28,8 @@ export function viewFor(p: Project, userId: string, users: { id: string; name: s
     teamCode: owner ? p.team.code : undefined, // teammates never receive the code
     teamRevoked: owner ? p.team.revoked : undefined,
     teamExpiresAt: owner ? p.team.expiresAt : undefined, // teammates never learn code state
+    teamMaxJoins: owner ? p.team.maxJoins ?? null : undefined,
+    teamJoinsUsed: owner ? p.team.joinsUsed ?? 0 : undefined,
     files, fileRevs, tasks: visibleTasks(p, userId), messages: visibleMessages(p, userId), members: visibleMembers(p, userId),
     skills: p.skills,
     names: Object.fromEntries(p.members.map((m) => [m.userId, users.find((u) => u.id === m.userId)?.name ?? m.userId])),
@@ -131,6 +133,8 @@ export class Api {
       case 'setAiAccess': return this.commit(S.setAiAccess(st, args.projectId, u, args.access));
       case 'setOwnerKeySharing': return this.commit(S.setOwnerKeySharing(st, args.projectId, u, !!args.on));
       case 'regenerateCode': return this.commit(S.regenerateCode(st, args.projectId, u));
+      case 'setTeamCodeExpiry': return this.commit(S.setTeamCodeExpiry(st, args.projectId, u, args.days ?? null));
+      case 'setTeamJoinLimit': return this.commit(S.setTeamJoinLimit(st, args.projectId, u, args.maxJoins ?? null));
       case 'revokeCode': return this.commit(S.revokeCode(st, args.projectId, u));
       case 'removeMember': return this.commit(S.removeMember(st, args.projectId, u, args.targetId));
       case 'addSkill': return this.commit(S.addSkill(st, args.projectId, u, args.skillId));
