@@ -3,7 +3,7 @@ import type { ProviderLabel, TaskStatus } from '../core/types';
 import { PROVIDER_LABELS, ROOT_FILES } from '../core/types';
 import { PROVIDERS, keyring, maskKey } from '../core/providers';
 import { searchCatalog, CATALOG } from '../core/skills';
-import { integrationCheck } from '../core/contract';
+import { integrationCheck, folderFingerprint } from '../core/contract';
 import { HttpClient, op, type ClientData, type ProjectView } from './client';
 
 /**
@@ -322,7 +322,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr }: { me: Me; 
         onAssign={() => actOp('assignTasks', { projectId: pid }, pid)} onBuild={(id: string, force: boolean) => actOp('runBuild', { projectId: pid, taskId: id, forceError: force, prompt: draftMemory.get(pid) ?? '' }, pid)} onCancel={(id: string) => actOp('cancelTaskRun', { projectId: pid, taskId: id }, pid)} openCode={(f: string) => { setOpen(f); setTab('code'); }} err={err} />}
       {tab === 'code' && <CodeView p={p} open={open} setOpen={setOpen} editKey={editKey} onSave={(path, c, rev) => actOp('saveFile', { projectId: pid, path, content: c, baseRev: rev }, pid)} reload={() => load()} err={err} clearErr={clearErr} />}
       {tab === 'preview' && <PreviewView p={p} />}
-      {tab === 'tasks' && <TasksView p={p} nameOf={nameOf} onStatus={(id, s) => actOp('setTaskStatus', { projectId: pid, taskId: id, status: s }, pid)} err={err} />}
+      {tab === 'tasks' && <TasksView p={p} nameOf={nameOf} onStatus={(id, s) => actOp('setTaskStatus', { projectId: pid, taskId: id, status: s }, pid)} actOp={(n, a) => actOp(n, a, pid)} err={err} />}
       {tab === 'chat' && (
         <div className="composer">
           <textarea aria-label="Message" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={owner || activeThread ? 'Message the AI' : 'No task assigned yet'} />
@@ -450,7 +450,15 @@ function PreviewView({ p }: { p: ProjectView }) {
   );
 }
 
-function TasksView({ p, nameOf, onStatus, err }: { p: ProjectView; nameOf: (id: string) => string; onStatus: (id: string, s: TaskStatus) => void; err: string | null }) {
+function TasksView({ p, nameOf, onStatus, actOp, err }: { p: ProjectView; nameOf: (id: string) => string; onStatus: (id: string, s: TaskStatus) => void; actOp: (name: string, args: Record<string, unknown>) => Promise<any>; err: string | null }) {
+  const reviewLabel = (t: ProjectView['tasks'][number]) => {
+    const r = t.review;
+    if (!r) return null;
+    if (r.state === 'accepted') return <div className="muted" style={{ marginTop: 8 }}>Merged into the project.</div>;
+    if (r.state === 'submitted') return <div className="muted" style={{ marginTop: 8 }}>Sent for merge review.</div>;
+    if (r.state === 'ready') return <div className="muted" style={{ marginTop: 8 }}>Check passed. Waiting for the owner to merge.</div>;
+    return <div className="err" role="alert" style={{ marginTop: 8 }}>Changes requested: {r.findings.map((f) => `${f.name} in ${f.path}`).join(', ')} - not in CONTRACT.md</div>;
+  };
   return (
     <div className="screen">
       {p.role !== 'owner' && <div className="note">You see only your own tasks.</div>}
@@ -458,14 +466,25 @@ function TasksView({ p, nameOf, onStatus, err }: { p: ProjectView; nameOf: (id: 
       {p.role === 'owner' && p.tasks.length > 0 && (
         <div className="card">
           <strong>Integration review</strong>
-          <p className="muted">Each folder is checked against CONTRACT.md before its work counts as merged into the project.</p>
-          {p.tasks.map((t) => {
-            const findings = integrationCheck(p.files['CONTRACT.md'] ?? '', p.files, t.folder);
-            return <div key={t.id} className={findings.length ? 'err' : 'muted'} role={findings.length ? 'alert' : undefined}>
-              {findings.length === 0
-                ? `${t.folder} (${nameOf(t.assigneeId)}): fits the contract.`
-                : `${t.folder} (${nameOf(t.assigneeId)}): ${findings.map((f) => `${f.name} in ${f.path}`).join(', ')} - not in CONTRACT.md`}
-            </div>;
+          <p className="muted">A teammate submits a done task for merge. You run the contract check, then merge. Open mismatches or any edit after the check block the merge.</p>
+          {p.tasks.every((t) => !t.review) && <div className="muted">Nothing submitted for merge yet.</div>}
+          {p.tasks.filter((t) => t.review).map((t) => {
+            const r = t.review!;
+            const stale = r.state === 'ready' && r.fingerprint !== folderFingerprint(p.fileRevs ?? {}, t.folder);
+            return (
+              <div key={t.id} style={{ marginTop: 8 }}>
+                <div className="row spread"><strong>{t.folder}</strong><span className="tag">{r.state === 'accepted' ? 'merged' : stale ? 'check is stale' : r.state.replace('_', ' ')}</span></div>
+                <div className="muted">{t.title} - {nameOf(t.assigneeId)}</div>
+                {r.state === 'changes_requested' && <div className="err" role="alert">{r.findings.map((f) => `${f.name} in ${f.path}`).join(', ')} - not in CONTRACT.md</div>}
+                {stale && <div className="err" role="alert">The folder changed since the last check. Run it again before merging.</div>}
+                {r.state !== 'accepted' && (
+                  <div className="row wrap" style={{ marginTop: 8 }}>
+                    <button className="small" onClick={() => actOp('runIntegrationReview', { projectId: p.id, taskId: t.id })}>Run check</button>
+                    <button className="small primary" disabled={r.state !== 'ready' || stale} onClick={() => actOp('acceptTaskMerge', { projectId: p.id, taskId: t.id })}>Merge</button>
+                  </div>
+                )}
+              </div>
+            );
           })}
         </div>
       )}
@@ -476,6 +495,10 @@ function TasksView({ p, nameOf, onStatus, err }: { p: ProjectView; nameOf: (id: 
           <p className="muted">{t.detail}</p>
           <div className="muted">Assigned to {nameOf(t.assigneeId)}. Folder {t.folder}</div>
           <div className="row wrap" style={{ marginTop: 8 }}>{(['todo', 'in_progress', 'done'] as const).map((s) => <button key={s} className={'chip small' + (t.status === s ? ' on' : '')} onClick={() => onStatus(t.id, s)}>{s.replace('_', ' ')}</button>)}</div>
+          {reviewLabel(t)}
+          {t.status === 'done' && t.review?.state !== 'accepted' && (
+            <div className="row" style={{ marginTop: 8 }}><button className="small" onClick={() => actOp('submitTaskForReview', { projectId: p.id, taskId: t.id })}>{t.review ? 'Submit again for merge' : 'Submit for merge'}</button></div>
+          )}
         </div>
       ))}
     </div>
@@ -572,4 +595,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-}
+                                                                                          }
