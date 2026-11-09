@@ -482,3 +482,80 @@ describe('Phase 9 states: drafts and unsaved edits survive a reload', () => {
     expect((document.querySelector('textarea.editor') as HTMLTextAreaElement).value).toBe('# server moved on');
   });
 });
+
+describe('cross-session propagation (two open sessions)', () => {
+  const scoped = (el: HTMLElement) => ({
+    text: () => el.textContent ?? '',
+    click: async (label: string) => {
+      act(() => {
+        const b = [...el.querySelectorAll('button')].find((x) => (x.textContent ?? '').trim() === label);
+        if (!b) throw new Error('button not found: ' + label);
+        b.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await flush();
+    },
+    clickCard: async (label: string) => {
+      act(() => {
+        const b = [...el.querySelectorAll('button.card')].find((x) => (x.textContent ?? '').includes(label));
+        if (!b) throw new Error('card not found: ' + label);
+        b.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await flush();
+    },
+    clickTab: async (name: string) => {
+      act(() => {
+        const t = [...el.querySelectorAll('[role="tab"]')].find((x) => x.textContent?.trim() === name)!;
+        t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await flush();
+    },
+  });
+  const wait = async (ms: number) => { await act(async () => { await new Promise((r) => setTimeout(r, ms)); }); };
+
+  it('a teammate session sees the owner\'s save without a reload, and keeps her unsaved draft', async () => {
+    // Remount session A with fast polling; A = Ram (owner).
+    act(() => root.unmount()); host.remove();
+    host = document.createElement('div'); document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => { root.render(React.createElement(App, { client: new DirectClient(api), pollMs: 50 })); });
+    await flush();
+    const A = scoped(host);
+    await A.click('Ram');
+    const pid = api.state.projects[0].id;
+    await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
+    const tid = api.state.projects[0].tasks.find((t) => t.assigneeId === 'u-seeta')!.id;
+    await api.call({ as: 'u-seeta', op: 'runBuild', args: { projectId: pid, taskId: tid } });
+
+    // Session B in a second host; inherits stored identity Ram, then switches to Seeta.
+    const hostB = document.createElement('div'); document.body.appendChild(hostB);
+    const rootB = createRoot(hostB);
+    await act(async () => { rootB.render(React.createElement(App, { client: new DirectClient(api), pollMs: 50 })); });
+    await flush();
+    const B = scoped(hostB);
+    await B.click('Switch');
+    await B.click('Seeta');
+    await B.clickCard('Habit Tracker');
+    await B.clickTab('Code');
+    await B.click('frontend/index.html');
+    // Seeta starts an unsaved edit in her file.
+    const edB = () => hostB.querySelector('textarea.editor') as HTMLTextAreaElement;
+    setVal(edB(), 'seeta unsaved draft');
+
+    // Owner edits a different file (the contract) and saves.
+    await A.clickCard('Habit Tracker');
+    await A.clickTab('Code');
+    await A.click('CONTRACT.md');
+    const edA = () => host.querySelector('textarea.editor') as HTMLTextAreaElement;
+    setVal(edA(), edA().value + '- NEW_SHARED_NAME\n');
+    await A.click('Save');
+
+    // Wait for at least one poll cycle; B reloaded silently in the background.
+    await wait(400);
+    // Her unsaved draft is untouched.
+    expect(edB().value).toBe('seeta unsaved draft');
+    // And the owner's save is visible in her session without any reload.
+    await B.click('CONTRACT.md');
+    expect(edB().value).toContain('NEW_SHARED_NAME');
+    act(() => rootB.unmount()); hostB.remove();
+  });
+});
