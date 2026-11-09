@@ -360,7 +360,7 @@ function SkillsSheet({ p, user, q, setQ, act, state, pid, close, err }: { p: Pro
   return (
     <div className="sheet-bg" onClick={close}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Skills and MCPs">
       <div className="row spread"><h2 style={{ margin: 0 }}>Skills, MCPs, prebuilt</h2><button className="small" onClick={close}>Close</button></div>
-      <div className="note">Starter catalog. Code review and Cloudflare Security run locally, only inside your folder scope. The rest are listed but cannot run yet.</div>
+      <div className="note">Starter catalog. Local shared-name check and Local secret scan run locally, only inside your folder scope. The rest are listed but cannot run yet.</div>
       <input aria-label="Search catalog" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" />
       <Err text={err} />
       {output && <div className="note" role="status">{output}</div>}
