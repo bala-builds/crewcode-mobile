@@ -389,9 +389,13 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
   useEffect(() => {
     const serverRev = path ? p.fileRevs?.[path] ?? 0 : 0;
     const draft = path ? editMemory.get(editKey(path)) : undefined;
-    if (draft && draft.rev === serverRev && draft.text !== (p.files[path!] ?? '')) { setText(draft.text); setRev(serverRev); setDirty(true); }
-    else { setText(path ? p.files[path] ?? '' : ''); setRev(serverRev); setDirty(false); }
-    if (!conflict) setConflict(null);
+    const current = path ? p.files[path] ?? '' : '';
+    if (draft && draft.rev !== serverRev && draft.text !== current) {
+      // The file changed while the draft was stored: keep the draft and open the
+      // conflict review instead of dropping the work.
+      setText(draft.text); setRev(serverRev); setDirty(true); setConflict({ mine: draft.text });
+    } else if (draft && draft.text !== current) { setText(draft.text); setRev(serverRev); setDirty(true); }
+    else { setText(current); setRev(serverRev); setDirty(false); if (!conflict) setConflict(null); }
   }, [path, p.files]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!path) return <div className="screen"><div className="empty">No files you can open yet.</div></div>;
   const editable = canWriteView(p, path);
@@ -538,4 +542,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-                                                                       }
+}
