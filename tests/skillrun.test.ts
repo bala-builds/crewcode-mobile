@@ -23,7 +23,7 @@ describe('Phase 7: two tools install, run within scope, and can be removed', () 
       expect(run.output).toContain('PROJECT_NAME');
       expect(run.output).toContain('match the contract');
       const msgs = run.state.projects[0].messages;
-      expect(msgs[msgs.length - 1].text).toContain('Code review');
+      expect(msgs[msgs.length - 1].text).toContain('Local shared-name check');
     }
   });
 
