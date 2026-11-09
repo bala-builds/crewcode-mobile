@@ -49,8 +49,8 @@ export function visibleFiles(p: Project, userId: string): string[] {
   return Object.keys(p.files).filter((path) => canAccess(p, userId, 'read', path) || canAccess(p, userId, 'write', path)).sort();
 }
 
-/** Teammates see the member list names and interests only. */
+/** Teammates see the member list names and interests only. AI access choices carry no keys, so they are visible. */
 export function visibleMembers(p: Project, userId: string) {
   if (!isMember(p, userId)) return [];
-  return p.members.map((m) => ({ userId: m.userId, role: m.role, interests: m.interests }));
+  return p.members.map((m) => ({ userId: m.userId, role: m.role, interests: m.interests, ai: m.ai }));
 }
