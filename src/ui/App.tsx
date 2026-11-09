@@ -475,6 +475,9 @@ function TeamSheet({ p, user, nameOf, actOp, close, err, backupJson, setBackupJs
       <div className="row spread"><h2 style={{ margin: 0 }}>Team</h2><button className="small" onClick={close}>Close</button></div>
       <Err text={err} />
       {owner && <div className="card"><div className="muted">Team code{p.teamRevoked ? ' (turned off)' : ''}</div><div className="row spread"><div className="code">{p.teamCode}</div><CopyBtn text={p.teamCode ?? ''} /></div>
+        {!p.teamRevoked && p.teamExpiresAt != null && (Date.now() > p.teamExpiresAt
+          ? <div className="err" role="alert">This code expired on {new Date(p.teamExpiresAt).toLocaleDateString()}. Teammates cannot join with it. Make a new code to reopen joining.</div>
+          : <div className="muted">This code expires on {new Date(p.teamExpiresAt).toLocaleDateString()}.</div>)}
         <div className="row wrap" style={{ marginTop: 8 }}><button className="small" onClick={() => actOp('regenerateCode', { projectId: p.id })}>New code</button><button className="small danger" onClick={() => actOp('revokeCode', { projectId: p.id })} disabled={!!p.teamRevoked}>Turn off</button></div></div>}
       {p.members.map((m) => (
         <div key={m.userId} className="card"><div className="row spread"><strong>{nameOf(m.userId)}</strong><span className={'tag ' + m.role}>{m.role}</span></div>
