@@ -155,4 +155,34 @@ describe('merge review (PRD F6, acceptance 9)', () => {
     expect(taskOf(state, 'u-seeta').review?.state).toBe('submitted');
     expect(taskOf(state, 'u-seeta').review?.snapshot).toBeUndefined();
   });
+
+  it('a resubmit after a clean check resets the review, so a merge without re-check is refused', () => {
+    let { state, pid, taskOf } = setup();
+    const id = taskOf(state, 'u-seeta').id;
+    state = ok(setTaskStatus(state, pid, 'u-seeta', id, 'done')).state;
+    state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
+    state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
+    expect(taskOf(state, 'u-seeta').review?.state).toBe('ready');
+    // the teammate submits again before the owner merges: the clean check must not carry over
+    state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
+    const r = acceptTaskMerge(state, pid, 'u-ram', id);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('Run the integration check');
+  });
+
+  it('a merge cannot be replayed, and merging before any check is refused', () => {
+    let { state, pid, taskOf } = setup();
+    const id = taskOf(state, 'u-seeta').id;
+    state = ok(setTaskStatus(state, pid, 'u-seeta', id, 'done')).state;
+    expect(acceptTaskMerge(state, pid, 'u-ram', id).ok).toBe(false);
+    state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
+    expect(acceptTaskMerge(state, pid, 'u-ram', id).ok).toBe(false);
+    state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
+    state = ok(acceptTaskMerge(state, pid, 'u-ram', id)).state;
+    expect(taskOf(state, 'u-seeta').review?.state).toBe('accepted');
+    const r = acceptTaskMerge(state, pid, 'u-ram', id);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('already merged');
+    expect(taskOf(state, 'u-seeta').review?.state).toBe('accepted');
+  });
 });
