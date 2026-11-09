@@ -445,10 +445,10 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
           </div>
         </div>
       )}
+      <div className="row" style={{ marginBottom: 8 }}><button className="primary" disabled={!editable || !dirty} onClick={save}>Save</button>{dirty && <span className="muted">Unsaved changes</span>}</div>
       <textarea className="editor" aria-label={'Contents of ' + path} value={text} readOnly={!editable} onChange={(e) => { setText(e.target.value); setDirty(true); clearErr(); editMemory.set(editKey(path), { text: e.target.value, rev }); persistEdits(); }} />
       <Err text={err} />
       {findings.length > 0 && <div className="note">Integration check: {findings.map((f) => `${f.name} in ${f.path} is not in CONTRACT.md`).join('. ')}</div>}
-      <div className="row" style={{ marginTop: 8 }}><button className="primary" disabled={!editable || !dirty} onClick={save}>Save</button>{dirty && <span className="muted">Unsaved changes</span>}</div>
     </div>
   );
 }
