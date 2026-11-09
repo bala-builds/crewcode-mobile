@@ -5,7 +5,7 @@ import { findByCode, generateTeamCode } from './teamcode';
 import { defaultContract, integrationCheck, folderFingerprint, reviewFingerprint } from './contract';
 import { planTasks, validatePlan, toTasks, simulateBuild, type PlannedTask } from './orchestrator';
 import { LOCAL_TOOL_HANDLERS } from './toolhandlers';
-import { runToolInSandbox } from './toolproc';
+import { mcpCall } from './mcpclient';
 import { CATALOG, skillCanAccess, localRunnable } from './skills';
 
 export type Result<T = {}> = ({ ok: true; state: AppState } & T) | { ok: false; error: string };
@@ -465,7 +465,7 @@ export function runSkill(state: AppState, projectId: string, userId: string, ski
     return fail(`${item.label} declares capabilities this build does not provide (${item.caps.join(', ')}). It is listed but cannot run yet.`);
   }
   if (!LOCAL_TOOL_HANDLERS[skillId]) return fail(`${item.label} cannot run yet. It is listed but not runnable in this build.`);
-  const ran = runToolInSandbox(skillId, content, p0.files['CONTRACT.md'] ?? '', path);
+  const ran = mcpCall(skillId, { content, contract: p0.files['CONTRACT.md'] ?? '', path });
   if (!ran.ok) return fail(ran.error);
   const r = mut(state, projectId, (p) => {
     p.messages.push({ id: newId('m'), authorId: 'ai', taskId: null, kind: 'system', at: Date.now(), text: `${item.label} (run by ${userId}): ${ran.output}` });
