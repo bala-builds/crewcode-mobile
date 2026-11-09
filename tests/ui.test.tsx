@@ -166,7 +166,10 @@ describe('Phase 1 owner journey and states', () => {
     await click('Ram');
     await clickCard('Habit Tracker'); // owner workspace
     await click('Add');
-    expect(text()).toContain('Starter catalog.');
+    expect(text()).toContain('Starter catalog (placeholder names, not verified).');
+    // the note is derived from the catalog: every locally runnable item is named, and it never claims the rest "cannot run yet"
+    expect(text()).toContain('Local secret scan, Local shared-name check, Docs outline run locally');
+    expect(text()).not.toContain('The rest are listed but cannot run yet');
     setVal(document.querySelector('[aria-label="Search catalog"]') as HTMLInputElement, 'zzz-no-match');
     expect(text()).toContain('Nothing matches');
     setVal(document.querySelector('[aria-label="Search catalog"]') as HTMLInputElement, '');
@@ -183,7 +186,7 @@ describe('Phase 1 owner journey and states', () => {
     await click('Seeta');
     await clickCard('Habit Tracker');
     await click('Add');
-    expect(text()).toContain('Starter catalog.');
+    expect(text()).toContain('Starter catalog (placeholder names, not verified).');
     await clickCardButton('Local shared-name check', 'Add');
     expect(text()).toContain('waiting for owner');
     // No run control while unapproved.
