@@ -302,6 +302,21 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     await click('Team');
     expect(text()).not.toContain('Backup');
   });
+
+  it('owner sees an expired team code and regenerating reopens joining', async () => {
+    (api as any).state.projects[0].team.expiresAt = Date.now() - 1000; // force expiry
+    await click('Ram');
+    await clickCard('Habit Tracker');
+    await click('Team');
+    expect(text()).toContain('This code expired');
+    expect(text()).toContain('Teammates cannot join with it');
+    const before = document.querySelector('.sheet .code')!.textContent!.trim();
+    await click('New code');
+    expect(text()).not.toContain('This code expired');
+    expect(text()).toContain('This code expires on');
+    const after = document.querySelector('.sheet .code')!.textContent!.trim();
+    expect(after).not.toBe(before);
+  });
 });
 
 describe('Phase 9 states: drafts and unsaved edits survive a reload', () => {
