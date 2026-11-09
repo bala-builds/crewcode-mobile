@@ -5,7 +5,7 @@ Phase numbers follow the private phase plan; names here describe what each area 
 
 | Area | Criterion | Status | Evidence |
 |---|---|---|---|
-| Mobile screens (Ph 1) | Full owner and teammate journeys, empty/loading/error/restricted states, buttons lead somewhere or say unavailable, text and tab survive Back | Met with mock data; real phone tap-through and real keyboard still unverified | tests/ui.test.tsx (4 tap-through tests), 360/390px screenshots; bugs 5-6 fixed and retested |
+| Mobile screens (Ph 1) | Full owner and teammate journeys, empty/loading/error/restricted states, buttons lead somewhere or say unavailable, text and tab survive Back | Met with mock data; real phone tap-through and real keyboard still unverified | tests/ui.test.tsx (7 tap-through tests), 360/390px screenshots; bugs 5-6 fixed and retested |
 | Permissions (Ph 1-2) | One function decides read/write by role and folder; path tricks (`..`, prefixes) refused | Met (logic) | tests/permissions.test.ts |
 | Permissions | Enforced where the client cannot bypass it; every access rule has a test that fails if the rule is removed | Met for the local dev API, Not built for a hosted server | src/server/api.ts, tests/api.test.ts; rule-removal run 10 Nov in BUGLOG.md |
 | Teams (Ph 2) | Team code create, join, regenerate, revoke, remove member | Met (logic) | tests/flows.test.ts |
@@ -29,4 +29,16 @@ Do not deploy this publicly before authentication and a hosted server exist.
 `tests/e2e.test.ts` runs create project, invite code, wrong code refused, two teammates join, AI plan, build, edit own folder, refused outside folder, teammate view hides other folders, revoke code, remove member. It runs through the server-side API with test identities.
 
 Counts as working: team code lifecycle, joining, folder isolation, per-user redaction, saves, removal.
-Does **not** count as working: task planning and builds (rule-based simulation), preview, skills, any real AI call, and authentication (excluded). The phone UI is not yet wired to this API, so the full tap-through flow on a device is still untested.
+Does **not** count as working: task planning and builds (rule-based simulation), preview, skills, any real AI call, and authentication (excluded). The phone UI is wired to the local API. A real Chrome owner/teammate journey through HttpClient, Vite proxy and the server binary passed on 10 Nov (scripts/browser-e2e.mjs, 47 observed HTTP requests including iframe probes). Real-device tap-through remains untested.
+
+
+## Local integration and hardening, 10 Nov
+
+- Phases 2-4 local connected flow: **Met** in headless Chrome at 390x844, two isolated browser contexts. Create, join, assign, simulated build, file edit/save persisted to server JSON, teammate redaction, root read-only, edited HTML preview. No page errors or horizontal page overflow. UI refreshes on re-entry, not live cross-session streaming.
+- Phase 7 tools: **Met for two deterministic local checks only**. Local shared-name check and Local secret scan can be added/approved/run/removed. Generic MCP installation and arbitrary tool execution **Not built**.
+- Phase 8 backup/revisions: **Met locally** for owner-only export/restore and optimistic file revisions (unit/API/HTTP tests). Google Drive backup/sync and hosted database **Not built**, approval-gated.
+- Phase 9 local transport hardening: **Met locally** for a 1 MB byte limit, 300 requests/minute loopback cap, JSON media-type/request-shape validation, request timeouts, no-store responses and friendly offline UI. Not hosted-service abuse protection. Tests: hardening.test.ts and client.test.ts. Full suite: 78 tests, 13 files.
+- Preview: opaque iframe blocks parent DOM/storage access in the tested browser, and JSON CORS requests to the local API are refused. Simple iframe POST cannot mutate the API because non-JSON media types are rejected. Network access itself is **not blocked**; preview is **not a secure runtime for untrusted code**. Banner says so. General crash/resource exhaustion isolation is not proven.
+- Secret review: no actual provider keys in tracked source. The gsk_ fixture in tests is fake. No live AI calls, CI runs, deployments, new accounts, or database migrations were made.
+
+Screenshots under shots/http-e2e are local, git-ignored: owner plan, teammate saved code, preview and offline error. This is desktop Chrome with a mobile viewport, not a phone keyboard/safe-area test.
