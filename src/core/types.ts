@@ -28,9 +28,11 @@ export type ReviewState = 'submitted' | 'ready' | 'changes_requested' | 'accepte
 export interface TaskReview {
   state: ReviewState;
   findings: { path: string; name: string }[];
-  /** Folder fingerprint (path@rev pairs) at the last check. A merge is refused once it no longer matches. */
+  /** Folder fingerprint (path@rev pairs) plus the CONTRACT.md revision at the last check. A merge is refused once it no longer matches. */
   fingerprint: string;
   at: number;
+  /** Immutable copy of the folder exactly as merged (set on acceptance). Later edits reopen the review. */
+  snapshot?: Record<string, string>;
 }
 export interface Task {
   id: string;
