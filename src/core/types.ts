@@ -19,6 +19,7 @@ export interface Member {
 }
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskRun = 'idle' | 'thinking' | 'failed';
 export interface Task {
   id: string;
   title: string;
@@ -26,6 +27,8 @@ export interface Task {
   assigneeId: string;
   folder: string; // e.g. "frontend/"
   status: TaskStatus;
+  run?: TaskRun;
+  runError?: string;
 }
 
 export interface ChatMessage {
