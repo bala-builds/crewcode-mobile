@@ -3,7 +3,7 @@ import { PROVIDER_LABELS } from './types';
 import { canAccess, isOwner, isMember } from './permissions';
 import { findByCode, generateTeamCode } from './teamcode';
 import { defaultContract, integrationCheck, folderFingerprint, reviewFingerprint } from './contract';
-import { planTasks, validatePlan, toTasks, simulateBuild } from './orchestrator';
+import { planTasks, validatePlan, toTasks, simulateBuild, type PlannedTask } from './orchestrator';
 import { CATALOG, skillCanAccess } from './skills';
 import { scanForKeys } from './keysafety';
 
@@ -149,22 +149,71 @@ export function removeMember(state: AppState, projectId: string, userId: string,
   });
 }
 
-export function assignTasks(state: AppState, projectId: string, userId: string, planTasksFn: typeof planTasks = planTasks, simulated = true): Result<{ count: number }> {
+export type PlanOutcome = { ok: true; plan: PlannedTask[] } | { ok: false; error: string };
+
+/** Marks planning as started. Refuses a concurrent second planning run (retry race guard). */
+export function startPlanning(state: AppState, projectId: string, userId: string): Result {
   const p0 = state.projects.find((x) => x.id === projectId);
   if (!p0) return fail('Project not found.');
-  if (!isOwner(p0, userId)) return fail('Only the owner\'s AI can assign tasks.');
-  const team = p0.members.filter((m) => m.role === 'teammate'); // the owner already has the whole project
-  const plan = planTasksFn({ name: p0.name, files: p0.files, members: team }, state.users);
-  const v = validatePlan(plan, team);
-  if (!v.ok) return fail('The plan was rejected: ' + v.errors.join(' '));
+  if (!isOwner(p0, userId)) return fail("Only the owner's AI can assign tasks.");
+  if (p0.planning) return fail('Planning is already running. Stop it before starting again.');
   const next = clone(state);
-  const p = next.projects.find((x) => x.id === projectId)!;
-  p.tasks = toTasks(plan, () => newId('t'));
+  next.projects.find((x) => x.id === projectId)!.planning = true;
+  return { ok: true, state: next };
+}
+
+/**
+ * Async boundary for planning: commits only if planning was not stopped meanwhile.
+ * The provider result is never trusted - the plan is validated again here, and a stopped
+ * run discards the result entirely (no tasks, no plan message).
+ */
+export function applyPlanning(state: AppState, projectId: string, outcome: PlanOutcome, opts: { simulated?: boolean } = {}): Result<{ count?: number; discarded?: true }> {
+  const next = clone(state);
+  const p = next.projects.find((x) => x.id === projectId);
+  if (!p) return fail('Project not found.');
+  if (!p.planning) return { ok: true, state: next, discarded: true };
+  p.planning = false;
+  const push = (m: Omit<ChatMessage, 'id' | 'at'>) => p.messages.push({ ...m, id: newId('m'), at: Date.now() });
+  if (!outcome.ok) {
+    push({ authorId: 'ai', taskId: null, kind: 'ai_error', text: outcome.error });
+    return { ok: true, state: next };
+  }
+  const team = p.members.filter((m) => m.role === 'teammate'); // the owner already has the whole project
+  const v = validatePlan(outcome.plan, team);
+  if (!v.ok) {
+    push({ authorId: 'ai', taskId: null, kind: 'ai_error', text: 'The plan was rejected: ' + v.errors.join(' ') });
+    return { ok: true, state: next };
+  }
+  p.tasks = toTasks(outcome.plan, () => newId('t'));
   const nm = (id: string) => next.users.find((u) => u.id === id)?.name ?? id;
-  p.messages.push({ id: newId('m'), authorId: 'ai', taskId: null, kind: 'ai_plan', at: Date.now(), text: (simulated ? 'Simulated plan:\n' : 'Plan:\n') + p.tasks.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
+  push({ authorId: 'ai', taskId: null, kind: 'ai_plan', text: ((opts.simulated ?? true) ? 'Simulated plan:\n' : 'Plan:\n') + p.tasks.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
   // Contract folder ownership is updated by the owner's AI, not by teammates.
   p.files['CONTRACT.md'] = defaultContract(p.name, p.tasks.map((t) => ({ folder: t.folder, owner: nm(t.assigneeId) })));
+  if (!p.fileRevs) p.fileRevs = {};
+  p.fileRevs['CONTRACT.md'] = (p.fileRevs['CONTRACT.md'] ?? 0) + 1;
+  reopenAcceptedReviews(p, 'CONTRACT.md');
   return { ok: true, state: next, count: p.tasks.length };
+}
+
+export function cancelPlanning(state: AppState, projectId: string, userId: string): Result {
+  return mut(state, projectId, (p) => {
+    if (!isOwner(p, userId)) return 'Only the owner can stop planning.';
+    if (!p.planning) return 'No planning is running.';
+    p.planning = false;
+    p.messages.push({ id: newId('m'), authorId: 'ai', taskId: null, kind: 'ai_error', text: 'Planning stopped. No tasks were changed.', at: Date.now() });
+  });
+}
+
+/** Synchronous composition used by tests and the demo seed: start, plan, apply. */
+export function assignTasks(state: AppState, projectId: string, userId: string, planTasksFn: typeof planTasks = planTasks, simulated = true): Result<{ count: number }> {
+  const started = startPlanning(state, projectId, userId);
+  if (!started.ok) return started;
+  const p0 = started.state.projects.find((x) => x.id === projectId)!;
+  const team = p0.members.filter((m) => m.role === 'teammate');
+  const plan = planTasksFn({ name: p0.name, files: p0.files, members: team }, started.state.users);
+  const applied = applyPlanning(started.state, projectId, { ok: true, plan }, { simulated });
+  if (!applied.ok) return applied;
+  return { ok: true, state: applied.state, count: applied.count ?? 0 };
 }
 
 export function postPrompt(state: AppState, projectId: string, userId: string, text: string, taskId: string | null): Result {
