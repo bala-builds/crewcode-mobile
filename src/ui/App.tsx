@@ -459,7 +459,7 @@ function PreviewView({ p }: { p: ProjectView }) {
   if (!path) return <div className="screen"><div className="empty">Nothing to preview yet. Run a simulated build for a frontend task first.</div></div>;
   return (
     <div className="screen">
-      <div className="note">Simulated preview of {path}. Scripts run in an opaque-origin iframe. Network access is not blocked. This is not a secure runtime for untrusted code.</div>
+      <div className="note">Preview of {path}: the real file runs with scripts on in an opaque-origin iframe - no access to the app or its storage. Network is not blocked. Not a secure runtime for untrusted code.</div>
       {readable.length > 1 && <div className="files">{readable.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => setSel(f)}>{f}</button>)}</div>}
       <iframe title="Preview" sandbox="allow-scripts" srcDoc={p.files[path]} />
     </div>
