@@ -110,7 +110,7 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
 
   return (
     <div className="app">
-      <div className="banner">Test identities only. Not a login. Real sign-in is built last. AI and previews are simulated.</div>
+      <div className="banner">Test identities only. Not a login. Real sign-in is built last. AI is simulated; previews run real web files.</div>
       {err && screen.name !== 'workspace' && <div style={{ padding: 16 }}><Err text={err} /><button onClick={() => window.location.reload()}>Retry connection</button></div>}
       {screen.name === 'welcome' && <Welcome users={users} pick={(u) => { setMe(u); go({ name: 'home' }); }}
         register={async (name) => {
@@ -611,4 +611,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-}
+                                                             }
