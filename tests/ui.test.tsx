@@ -38,6 +38,13 @@ const clickCard = (label: string) => act(() => {
   if (!b) throw new Error('card not found: ' + label);
   b.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 });
+const clickCardButton = (cardLabel: string, buttonLabel: string) => act(() => {
+  const card = [...document.querySelectorAll('div.card')].find((c) => (c.textContent ?? '').includes(cardLabel));
+  if (!card) throw new Error('card not found: ' + cardLabel);
+  const b = [...card.querySelectorAll('button')].find((x) => (x.textContent ?? '').trim() === buttonLabel);
+  if (!b) throw new Error('button not found in card ' + cardLabel + ': ' + buttonLabel);
+  b.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+});
 const setVal = (el: HTMLInputElement | HTMLTextAreaElement, v: string) => act(() => {
   const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(el, v);
@@ -139,10 +146,33 @@ describe('Phase 1 owner journey and states', () => {
     click('Team');
     expect(document.querySelector('[role="dialog"]')).toBeTruthy();
     click('Close');
+    click('Back');
+    click('Switch');
+    click('Ram');
+    clickCard('Habit Tracker'); // owner workspace
     click('Add');
-    expect(text()).toContain('Placeholders only.');
+    expect(text()).toContain('Starter catalog.');
     setVal(document.querySelector('[aria-label="Search catalog"]') as HTMLInputElement, 'zzz-no-match');
     expect(text()).toContain('Nothing matches');
+    setVal(document.querySelector('[aria-label="Search catalog"]') as HTMLInputElement, '');
+    // Owner adds Code review (approved at once) and runs it on PRD.md through the UI.
+    clickCardButton('Code review', 'Add');
+    expect(text()).toContain('approved');
+    setVal(document.querySelector('[aria-label="File for Code review"]') as HTMLInputElement, 'PRD.md');
+    click('Run');
+    expect(text()).toContain('Review of PRD.md');
+    click('Close');
+  });
+
+  it('teammate-added skill waits for owner approval and shows no run control', () => {
+    click('Seeta');
+    clickCard('Habit Tracker');
+    click('Add');
+    expect(text()).toContain('Starter catalog.');
+    clickCardButton('Code review', 'Add');
+    expect(text()).toContain('waiting for owner');
+    // No run control while unapproved.
+    expect(document.querySelector('[aria-label="File for Code review"]')).toBeNull();
     click('Close');
   });
 });
