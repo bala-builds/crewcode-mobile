@@ -68,6 +68,8 @@ export interface Project {
   tasks: Task[];
   messages: ChatMessage[];
   ownerKeySharing: boolean;
+  /** true while the owner's AI is dividing tasks; a late provider result is discarded once cleared */
+  planning?: boolean;
   skills: ProjectSkill[];
 }
 
