@@ -7,10 +7,10 @@ export interface SkillItem {
   summary: string; permissions: string[]; verified: false;
 }
 export const CATALOG: SkillItem[] = [
-  { id: 'claude-design', label: 'Claude Design', kind: 'prebuilt', summary: 'Design helper (placeholder name from your list).', permissions: ['Read the shared contract', 'Write inside the member\'s own folder'], verified: false },
-  { id: 'cloudflare-security', label: 'Cloudflare Security', kind: 'prebuilt', summary: 'Security checks (placeholder name from your list).', permissions: ['Read files in the member\'s own folder'], verified: false },
-  { id: 'code-review', label: 'Code review', kind: 'skill', summary: 'Example skill: reviews a member\'s folder.', permissions: ['Read files in the member\'s own folder'], verified: false },
-  { id: 'docs-mcp', label: 'Docs lookup', kind: 'mcp', summary: 'Example MCP: looks up documentation.', permissions: ['Network access to documentation sites'], verified: false },
+  { id: 'claude-design', label: 'Claude Design', kind: 'prebuilt', summary: 'Design helper (placeholder name from your list). Not runnable in this build.', permissions: ['Read the shared contract', 'Write inside the member\'s own folder'], verified: false },
+  { id: 'cloudflare-security', label: 'Local secret scan', kind: 'prebuilt', summary: 'Deterministic local scan of one in-scope file for key-shaped strings, findings masked. (From your list as "cloudflare security" - this is not the Cloudflare service.)', permissions: ['Read files in the member\'s own folder'], verified: false },
+  { id: 'code-review', label: 'Local shared-name check', kind: 'skill', summary: 'Deterministic local check of one in-scope file: lists @shared names and compares them to CONTRACT.md. Not a general code review.', permissions: ['Read files in the member\'s own folder'], verified: false },
+  { id: 'docs-mcp', label: 'Docs lookup', kind: 'mcp', summary: 'Example MCP: looks up documentation. Not runnable in this build.', permissions: ['Network access to documentation sites'], verified: false },
 ];
 export function searchCatalog(q: string): SkillItem[] {
   const s = q.trim().toLowerCase();
