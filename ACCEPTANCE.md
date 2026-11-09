@@ -5,6 +5,7 @@ Phase numbers follow the private phase plan; names here describe what each area 
 
 | Area | Criterion | Status | Evidence |
 |---|---|---|---|
+| Mobile screens (Ph 1) | Full owner and teammate journeys, empty/loading/error/restricted states, buttons lead somewhere or say unavailable, text and tab survive Back | Met with mock data; real phone tap-through and real keyboard still unverified | tests/ui.test.tsx (4 tap-through tests), 360/390px screenshots; bugs 5-6 fixed and retested |
 | Permissions (Ph 1-2) | One function decides read/write by role and folder; path tricks (`..`, prefixes) refused | Met (logic) | tests/permissions.test.ts |
 | Permissions | Enforced where the client cannot bypass it | Met for the local dev API, Not built for a hosted server | src/server/api.ts, tests/api.test.ts (5 tests: probing, redaction, owner-only ops, folder refusal) |
 | Teams (Ph 2) | Team code create, join, regenerate, revoke, remove member | Met (logic) | tests/flows.test.ts |
