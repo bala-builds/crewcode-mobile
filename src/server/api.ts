@@ -4,6 +4,7 @@ import type { AppState, Project } from '../core/types';
 import * as S from '../core/store';
 import { visibleFiles, visibleMessages, visibleTasks, visibleMembers, isMember, isOwner } from '../core/permissions';
 import { exportProject, restoreProject } from '../core/backup';
+import { deterministicBuild } from '../core/execution';
 
 export type ApiRequest = { as: string; op: string; args?: Record<string, any> };
 export type ApiResponse = { ok: true; data?: any } | { ok: false; error: string };
@@ -30,6 +31,11 @@ export function viewFor(p: Project, userId: string, users: { id: string; name: s
     skills: p.skills,
     names: Object.fromEntries(p.members.map((m) => [m.userId, users.find((u) => u.id === m.userId)?.name ?? m.userId])),
   };
+}
+
+function requireDeterministicBuild(projectName: string, folder: string, prompt: string): { ok: true; message: string; files: Record<string, string> } | { ok: false; error: string } {
+  // The local server is synchronous and intentionally uses only the deterministic provider.
+  return deterministicBuild(projectName, folder, prompt);
 }
 
 export class Api {
@@ -71,7 +77,17 @@ export class Api {
       case 'saveFile': return this.commit(S.saveFile(st, args.projectId, u, args.path, args.content, args.baseRev));
       case 'postPrompt': return this.commit(S.postPrompt(st, args.projectId, u, args.text, args.taskId ?? null));
       case 'assignTasks': return this.commit(S.assignTasks(st, args.projectId, u));
-      case 'runBuild': return this.commit(S.runBuild(st, args.projectId, u, args.taskId, { forceError: !!args.forceError }));
+      case 'runBuild': {
+        // The local server is synchronous: the client starts a run, and this request finishes it.
+        const r = S.runBuild(st, args.projectId, u, args.taskId, {
+          forceError: !!args.forceError,
+          prompt: typeof args.prompt === 'string' ? args.prompt : '',
+          simulated: true,
+          build: (task, project, prompt) => requireDeterministicBuild(project.name, task.folder, prompt),
+        });
+        return this.commit(r);
+      }
+      case 'cancelTaskRun': return this.commit(S.cancelTaskRun(st, args.projectId, u, args.taskId));
       case 'setTaskStatus': return this.commit(S.setTaskStatus(st, args.projectId, u, args.taskId, args.status));
       case 'setAiAccess': return this.commit(S.setAiAccess(st, args.projectId, u, args.access));
       case 'setOwnerKeySharing': return this.commit(S.setOwnerKeySharing(st, args.projectId, u, !!args.on));
