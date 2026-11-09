@@ -68,12 +68,32 @@ describe('Phase 7: two tools install, run within scope, and can be removed', () 
     expect(runSkill(rm.state, p.id, 'u-seeta', 'code-review', 'frontend/a.ts').ok).toBe(false);
   });
 
-  it('listed-but-not-runnable items say so plainly', () => {
+  it('docs-mcp runs locally as an outline tool on an in-scope document', () => {
     const { s, p } = setup();
     let st = addSkill(s, p.id, 'u-ram', 'docs-mcp');
     if (!st.ok) throw new Error(st.error);
     const run = runSkill(st.state, p.id, 'u-ram', 'docs-mcp', 'PRD.md');
+    expect(run.ok).toBe(true);
+    if (run.ok) expect(run.output).toContain('Outline of PRD.md');
+  });
+
+  it('items declaring capabilities this build lacks are refused with the reason', () => {
+    const { s, p } = setup();
+    let st = addSkill(s, p.id, 'u-ram', 'claude-design'); // declares write_scope
+    if (!st.ok) throw new Error(st.error);
+    const run = runSkill(st.state, p.id, 'u-ram', 'claude-design', 'PRD.md');
     expect(run.ok).toBe(false);
-    if (!run.ok) expect(run.error).toContain('not runnable');
+    if (!run.ok) {
+      expect(run.error).toContain('capabilities');
+      expect(run.error).toContain('write_scope');
+    }
+  });
+
+  it('a runnable-kind item still cannot read outside the member scope', () => {
+    const { s, p } = setup();
+    let st = addSkill(s, p.id, 'u-ram', 'docs-mcp');
+    if (!st.ok) throw new Error(st.error);
+    const run = runSkill(st.state, p.id, 'u-seeta', 'docs-mcp', 'backend/server.ts');
+    expect(run.ok).toBe(false);
   });
 });
