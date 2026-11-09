@@ -35,6 +35,18 @@ export function integrationCheck(contract: string, files: Record<string, string>
   return findings;
 }
 
+/**
+ * A fingerprint of every file revision inside a folder. Stored on a review at check time;
+ * any later write under the folder bumps a revision and makes the stored check stale.
+ */
+export function folderFingerprint(fileRevs: Record<string, number>, folder: string): string {
+  return Object.entries(fileRevs)
+    .filter(([path]) => path.startsWith(folder))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([path, rev]) => `${path}@${rev}`)
+    .join(',');
+}
+
 export function defaultContract(projectName: string, folders: { folder: string; owner: string }[] = []): string {
   return [
     `# Shared contract for ${projectName}`,
