@@ -81,3 +81,25 @@ describe('API parity: skills, conflicts, backup', () => {
     expect(v.files['PRD.md']).toContain('Habit Tracker');
   });
 });
+
+describe('join limit through the API boundary', () => {
+  it('limit 1: first join commits, the next is refused even issued back to back', async () => {
+    const api = new Api();
+    const pid = (api.call({ as: 'u-ram', op: 'listProjects' }) as any).data[0].id;
+    expect((api.call({ as: 'u-ram', op: 'setTeamJoinLimit', args: { projectId: pid, maxJoins: 1 } }) as any).ok).toBe(true);
+    const first = api.call({ as: 'u-hanuma', op: 'joinProject', args: { code: 'DEM-123', interests: ['x'] } }) as any;
+    expect(first.ok).toBe(true);
+    // Issued immediately after: the second caller already sees joinsUsed = 1.
+    const second = api.call({ as: 'u-outsider', op: 'joinProject', args: { code: 'DEM-123', interests: ['y'] } }) as any;
+    expect(second.ok).toBe(false);
+    expect(second.error).toContain('join limit');
+    const v = (api.call({ as: 'u-ram', op: 'getProject', args: { projectId: pid } }) as any).data;
+    expect(v.teamJoinsUsed).toBe(1);
+    expect(v.teamMaxJoins).toBe(1);
+    // Teammate views never carry code state.
+    const tv = (api.call({ as: 'u-seeta', op: 'getProject', args: { projectId: pid } }) as any).data;
+    expect(tv.teamMaxJoins).toBeUndefined();
+    expect(tv.teamJoinsUsed).toBeUndefined();
+    expect(tv.teamExpiresAt).toBeUndefined();
+  });
+});
