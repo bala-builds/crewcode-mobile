@@ -24,6 +24,7 @@ function demoStart(): { state: AppState; screen: Screen } | null {
   return { state: st, screen: { name: 'workspace', pid } };
 }
 
+const tabMemory = new Map<string, Tab>(); // tab position survives leaving and returning to a project
 const INTERESTS = ['frontend', 'backend', 'AI features', 'testing'];
 
 export function App() {
@@ -185,7 +186,8 @@ function AiAccess({ state, setState, user, pid, go }: { state: AppState; setStat
 
 function Workspace({ state, setState, user, pid, go, nameOf }: { state: AppState; setState: (s: AppState) => void; user: string; pid: string; go: (s: Screen) => void; nameOf: (id: string) => string }) {
   const p = state.projects.find((x) => x.id === pid);
-  const [tab, setTab] = useState<Tab>((hashParams().get('tab') as Tab) || 'chat'); const [draft, setDraft] = useState(''); const [err, setErr] = useState<string | null>(null);
+  const [tab, setTabState] = useState<Tab>((hashParams().get('tab') as Tab) || tabMemory.get(pid) || 'chat');
+  const setTab = (t: Tab) => { tabMemory.set(pid, t); setTabState(t); }; const [draft, setDraft] = useState(''); const [err, setErr] = useState<string | null>(null);
   const [sheet, setSheet] = useState<null | 'team' | 'skills'>((hashParams().get('sheet') as 'team' | 'skills') || null); const [q, setQ] = useState(''); const [open, setOpen] = useState<string | null>(null);
   const [thread, setThread] = useState<string | null>(null);
   if (!p) return <div className="screen">Project not found.</div>;
