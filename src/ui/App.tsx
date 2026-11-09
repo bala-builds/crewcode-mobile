@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProviderLabel, TaskStatus } from '../core/types';
 import { PROVIDER_LABELS, ROOT_FILES } from '../core/types';
 import { PROVIDERS, keyring, maskKey } from '../core/providers';
-import { searchCatalog, CATALOG } from '../core/skills';
+import { searchCatalog, CATALOG, localRunnable } from '../core/skills';
 import { integrationCheck, reviewFingerprint } from '../core/contract';
 import { HttpClient, op, type ClientData, type ProjectView } from './client';
 
@@ -569,7 +569,7 @@ function TeamSheet({ p, user, nameOf, actOp, close, err, backupJson, setBackupJs
   );
 }
 
-const RUNNABLE = new Set(['code-review', 'cloudflare-security']);
+
 
 function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectView; user: string; q: string; setQ: (s: string) => void; actOp: (name: string, args: Record<string, unknown>) => Promise<any>; pid: string; close: () => void; err: string | null }) {
   const items = useMemo(() => searchCatalog(q), [q]); const owner = p.role === 'owner';
@@ -581,7 +581,7 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
   return (
     <div className="sheet-bg" onClick={close}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Skills and MCPs">
       <div className="row spread"><h2 style={{ margin: 0 }}>Skills, MCPs, prebuilt</h2><button className="small" onClick={close}>Close</button></div>
-      <div className="note">Starter catalog. Local shared-name check and Local secret scan run locally, only inside your folder scope. The rest are listed but cannot run yet.</div>
+      <div className="note">Starter catalog. Local shared-name check, Local secret scan and Docs outline run locally, only inside your folder scope. Items needing more than local reads say what they need.</div>
       <input aria-label="Search catalog" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" />
       <Err text={err} />
       {output && <div className="note" role="status">{output}</div>}
@@ -598,17 +598,17 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
               {added && !added.approvedByOwner && owner && <button className="small" onClick={() => actOp('approveSkill', { projectId: pid, skillId: it.id })}>Approve</button>}
               {added && (owner || added.addedBy === user) && <button className="small danger" onClick={() => { setOutput(null); actOp('removeSkill', { projectId: pid, skillId: it.id }); }}>Remove</button>}
             </div>
-            {added && added.approvedByOwner && RUNNABLE.has(it.id) && (
+            {added && added.approvedByOwner && localRunnable(it) && (
               <div className="row" style={{ marginTop: 8 }}>
                 <input aria-label={`File for ${it.label}`} placeholder="file path, e.g. frontend/index.html" value={runPath[it.id] ?? ''} onChange={(e) => setRunPath({ ...runPath, [it.id]: e.target.value })} />
                 <button className="small primary" onClick={() => run(it.id)}>Run</button>
               </div>
             )}
-            {added && added.approvedByOwner && !RUNNABLE.has(it.id) && <div className="muted" style={{ marginTop: 8 }}>Cannot run yet in this build.</div>}
+            {added && added.approvedByOwner && !localRunnable(it) && <div className="muted" style={{ marginTop: 8 }}>Cannot run yet in this build{it.caps.some((c) => c !== 'read_scope') ? ': needs ' + it.caps.filter((c) => c !== 'read_scope').join(', ') : ''}.</div>}
           </div>
         );
       })}
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-  }
+        }
