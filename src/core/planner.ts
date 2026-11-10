@@ -10,8 +10,11 @@ import { validatePlan, type PlannedTask } from './orchestrator';
 
 const MASTER_PROMPT = [
   'You are the owner AI of a CrewCode project.',
-  'Divide the work described in the PRD into one task per team member.',
-  'Match tasks to member interests where possible.',
+  'Divide the application described in the PRD into complete FEATURES (pages, services or capabilities).',
+  'Each feature is built end to end by one person: its screens and its backend together. Never split the frontend and backend of the same feature across people.',
+  'Assign features to team members, balancing workload and respecting dependencies between features.',
+  'Shared foundations (session shape, routes, data shapes, shared components, API base) belong to the contract, not to a member.',
+  'Put dependency notes and a rough effort estimate in each task detail.',
   'Rules:',
   '- Every task has exactly one assignee and exactly one folder.',
   '- No two tasks share a folder.',
