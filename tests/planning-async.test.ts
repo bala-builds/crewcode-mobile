@@ -3,6 +3,7 @@
 // no live key is wired.
 import { describe, it, expect } from 'vitest';
 import { seedState, createProject, joinProject } from '../src/core/store';
+import * as Smod from '../src/core/store';
 import { Api } from '../src/server/api';
 
 const setup = () => {
@@ -75,13 +76,23 @@ describe('async planning boundary (delayed provider)', () => {
     expect(p.planning).toBe(false);
   });
 
-  it('the default deterministic planner still assigns through the async path', async () => {
+  it('the default deterministic planner proposes through the async path; the owner approves', async () => {
     const { s, pid } = setup();
     const api = new Api(s);
     const r = await api.callAsync({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
     expect(r.ok).toBe(true);
     expect((r as any).data.count).toBe(1);
-    const p = proj(api, pid);
+    let p = proj(api, pid);
+    // Proposal only: no tasks until the owner approves.
+    expect(p.tasks).toHaveLength(0);
+    expect(p.proposedPlan![0].assigneeId).toBe('u-seeta');
+    // A teammate can never approve.
+    expect(Smod.confirmPlanning(api.state, pid, 'u-seeta', { accept: true }).ok).toBe(false);
+    const ok = Smod.confirmPlanning(api.state, pid, 'u-ram', { accept: true });
+    expect(ok.ok).toBe(true);
+    api.state = (ok as any).state;
+    p = proj(api, pid);
+    expect(p.proposedPlan).toBeUndefined();
     expect(p.tasks[0].assigneeId).toBe('u-seeta');
     expect(p.messages.some((m: any) => m.kind === 'ai_plan')).toBe(true);
   });
