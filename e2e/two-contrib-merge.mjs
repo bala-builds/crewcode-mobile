@@ -37,6 +37,7 @@ const shot=async(p,name)=>{await p.screenshot({path:OUT+'/'+name});console.log('
 const setEditor=async(p,v)=>{await p.evaluate((v)=>{const ta=document.querySelector('textarea.editor');const set=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;set.call(ta,v);ta.dispatchEvent(new Event('input',{bubbles:true}));},v);await sleep(400);};
 const FRONTEND=fs.readFileSync(FIX+'/frontend/index.html','utf8');
 const BACKEND_FILES=['config.js','index.js','package.json','routes/habits.js','data/store.js'];
+const SETTINGS_FILES=['config.js','index.js','package.json','routes/settings.js','data/store.js'];
 let bA,bB,bC;
 try{
  for(let i=0;i<80;i++){try{const r=await fetch('http://127.0.0.1:5174/');if(r.ok)break;}catch{}await sleep(250);}
@@ -94,10 +95,24 @@ try{
  await click(B,'Tasks'); await click(B,'done'); await sleep(600); await click(B,'Submit for merge');
  await B.waitForFunction(()=>document.body.innerText.includes('Sent for merge review'),{timeout:15000});
  console.log('SEETA-SUBMITTED', new Date().toISOString());
- // Hanuma: simulated build only (settings/ full-stack placeholder), done, submit.
+ // Hanuma: simulated build (settings/ placeholder), then the five fixture settings-service
+ // files created in settings/ via New file - the settings feature really runs later.
  await C.waitForFunction(()=>document.body.innerText.includes('Run simulated build'),{timeout:40000});
  await click(C,'Run simulated build');
  for(let i=0;i<30;i++){ const q=await api({as:'u-hanuma',op:'getProject',args:{projectId:pid}}); if(q.files['settings/index.html']) break; await sleep(1000); }
+ await click(C,'Code');
+ for(const f of SETTINGS_FILES){
+   const content=fs.readFileSync(FIX+'/settings/'+f,'utf8');
+   await click(C,'New file');
+   await typeReplace(C,'input[aria-label="New file path"]','settings/'+f);
+   await click(C,'Create');
+   await C.waitForFunction((n)=>{const el=[...document.querySelectorAll('.row.spread strong')].find(e=>e.textContent===n);return !!el;},{timeout:10000},'settings/'+f);
+   await C.waitForSelector('textarea.editor',{timeout:8000});
+   await setEditor(C,content);
+   await click(C,'Save');
+   await C.waitForFunction(()=>!document.body.innerText.includes('Unsaved changes'),{timeout:10000});
+   console.log('CREATED', 'settings/'+f);
+ }
  await click(C,'Tasks'); await click(C,'done'); await sleep(600); await click(C,'Submit for merge');
  await C.waitForFunction(()=>document.body.innerText.includes('Sent for merge review'),{timeout:15000});
  console.log('HANUMA-SUBMITTED', new Date().toISOString());
@@ -118,6 +133,7 @@ try{
  const checks={};
  checks['main/home/index.html']=proj.files['main/home/index.html']===FRONTEND;
  for(const f of BACKEND_FILES) checks['main/home/'+f]=proj.files['main/home/'+f]===fs.readFileSync(FIX+'/backend/'+f,'utf8');
+ for(const f of SETTINGS_FILES) checks['main/settings/'+f]=proj.files['main/settings/'+f]===fs.readFileSync(FIX+'/settings/'+f,'utf8');
  console.log('MAIN-TREE', JSON.stringify(checks));
  if(Object.values(checks).some(v=>!v)) throw Error('main tree mismatch');
  // combined runtime: extract merged main/, boot the merged backend, serve the merged
@@ -125,11 +141,13 @@ try{
  fs.rmSync('/tmp/combined-main',{recursive:true,force:true});
  for(const [pth,c] of Object.entries(proj.files)) if(pth.startsWith('main/')){ const fp='/tmp/combined-main/'+pth.slice(5); fs.mkdirSync(path.dirname(fp),{recursive:true}); fs.writeFileSync(fp,c); }
  fs.symlinkSync(FIX+'/backend/node_modules','/tmp/combined-main/home/node_modules');
+ fs.symlinkSync(FIX+'/backend/node_modules','/tmp/combined-main/settings/node_modules');
  const be=spawn('node',['index.js'],{cwd:'/tmp/combined-main/home',env:{...process.env,PORT:'4123'},stdio:'ignore'});
+ const beS=spawn('node',['index.js'],{cwd:'/tmp/combined-main/settings',env:{...process.env,PORT:'4124'},stdio:'ignore'});
  const fe=spawn('node',['-e',`
 const http=require('http'),fs=require('fs');
 http.createServer(async(req,res)=>{
- if(req.url.startsWith('/api/')){ const c=[]; req.on('data',x=>c.push(x)); req.on('end',async()=>{ const r=await fetch('http://127.0.0.1:4123'+req.url,{method:req.method,headers:{'content-type':'application/json'},body:req.method==='GET'?undefined:Buffer.concat(c)}); res.writeHead(r.status,{'content-type':'application/json'}); res.end(Buffer.from(await r.arrayBuffer())); }); return; }
+ if(req.url.startsWith('/api/')){ const c=[]; req.on('data',x=>c.push(x)); req.on('end',async()=>{ const target=req.url.startsWith('/api/v1/settings')?'http://127.0.0.1:4124':'http://127.0.0.1:4123'; const r=await fetch(target+req.url,{method:req.method,headers:{'content-type':'application/json'},body:req.method==='GET'?undefined:Buffer.concat(c)}); res.writeHead(r.status,{'content-type':'application/json'}); res.end(Buffer.from(await r.arrayBuffer())); }); return; }
  res.writeHead(200,{'content-type':'text/html'}); res.end(fs.readFileSync('/tmp/combined-main/home/index.html'));
 }).listen(5201,'127.0.0.1');`],{stdio:'ignore'});
  await sleep(1200);
@@ -138,10 +156,13 @@ http.createServer(async(req,res)=>{
  await R.type('#n','Drink water'); await R.click('#add'); await sleep(1500);
  const listTxt=await R.evaluate(()=>document.getElementById('list').innerText);
  const viaApi=await (await fetch('http://127.0.0.1:4123/api/v1/habits')).json();
- console.log('COMBINED-LIST', JSON.stringify(listTxt), '| backend sees', viaApi.length, 'habit(s):', JSON.stringify(viaApi.map(h=>h.name)));
+ const viaSettings=await (await fetch('http://127.0.0.1:4124/api/v1/settings')).json();
+ const whoTxt=await R.$eval('#who',e=>e.textContent);
+ console.log('COMBINED-LIST', JSON.stringify(listTxt), '| home backend sees', viaApi.length, 'habit(s):', JSON.stringify(viaApi.map(h=>h.name)), '| settings backend says', JSON.stringify(viaSettings), '| page shows:', JSON.stringify(whoTxt));
  await shot(R,'34f-combined-app-running.png');
  if(!listTxt.includes('Drink water')||viaApi.length!==1) throw Error('combined runtime failed');
- be.kill(); fe.kill();
+ if(viaSettings.displayName!=='Balu'||!whoTxt.includes('Balu')) throw Error('cross-feature journey failed: settings feature not serving the merged page');
+ be.kill(); beS.kill(); fe.kill();
  console.log('TWO-CONTRIB-COMBINED-TEST PASSED');
 }catch(e){ console.error('FAILED:', e.message); try{await shot(A,'34-fail-A.png');}catch{} try{await shot(B,'34-fail-B.png');}catch{} try{await shot(C,'34-fail-C.png');}catch{} process.exitCode=1; }
 finally{ try{await bA?.close();await bB?.close();await bC?.close();}catch{} srv.kill(); stat.kill(); }
