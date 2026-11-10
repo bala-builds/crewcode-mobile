@@ -113,12 +113,25 @@ export async function finishGithubSignIn(cfg: AuthConfig | null, query: { code?:
   if (!query.code || !query.state) return { status: 400, body: { ok: false, error: 'Missing code or state.' } };
   if (!cookieState || cookieState !== query.state) return { status: 400, body: { ok: false, error: 'State cookie mismatch. Start sign-in again in the same browser.' } };
   if (!consumeState(query.state)) return { status: 400, body: { ok: false, error: 'State mismatch. Start sign-in again.' } };
+  const p = await exchangeCodeForProfile(cfg, query.code, fetchImpl);
+  if ('status' in p) return p;
+  // Handshake verified: bind the session to the immutable GitHub user id and
+  // hand the browser back to the app with an HttpOnly session cookie.
+  const s = createSession(p.githubId, p.login);
+  return { status: 302, location: appUrl, setCookie: sessionCookie(s.id, cfg.callbackUrl.startsWith('https:')) };
+}
+
+/**
+ * The OAuth code exchange + profile read, shared by the dev server and the
+ * serverless deployment. Never leaks the token or client secret into results.
+ */
+export async function exchangeCodeForProfile(cfg: AuthConfig, code: string, fetchImpl: FetchLike): Promise<{ status: 502; body: Record<string, unknown> } | { githubId: number; login: string }> {
   let token: string;
   try {
     const r = await fetchImpl('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ client_id: cfg.clientId, client_secret: cfg.clientSecret, code: query.code, redirect_uri: cfg.callbackUrl }),
+      body: JSON.stringify({ client_id: cfg.clientId, client_secret: cfg.clientSecret, code, redirect_uri: cfg.callbackUrl }),
     });
     const data = (await r.json()) as Record<string, unknown>;
     if (typeof data.access_token !== 'string' || !data.access_token) {
@@ -132,10 +145,7 @@ export async function finishGithubSignIn(cfg: AuthConfig | null, query: { code?:
     const r = await fetchImpl('https://api.github.com/user', { headers: { authorization: 'Bearer ' + token, accept: 'application/vnd.github+json' } });
     const u = (await r.json()) as Record<string, unknown>;
     if (!r.ok || typeof u.login !== 'string' || typeof u.id !== 'number') return { status: 502, body: { ok: false, error: 'GitHub did not return a user profile.' } };
-    // Handshake verified: bind the session to the immutable GitHub user id and
-    // hand the browser back to the app with an HttpOnly session cookie.
-    const s = createSession(u.id, u.login);
-    return { status: 302, location: appUrl, setCookie: sessionCookie(s.id, cfg.callbackUrl.startsWith('https:')) };
+    return { githubId: u.id, login: u.login };
   } catch {
     return { status: 502, body: { ok: false, error: 'Could not reach GitHub to read the profile.' } };
   }
