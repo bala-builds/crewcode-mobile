@@ -70,7 +70,7 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
         if (cancelled || !l.ok) return;
         const pid = l.data[0]?.id as string;
         let g = await op(cli, 'u-seeta', 'getProject', { projectId: pid });
-        if (g.ok && g.data.tasks.length === 0) { await op(cli, 'u-ram', 'assignTasks', { projectId: pid }); g = await op(cli, 'u-seeta', 'getProject', { projectId: pid }); }
+        if (g.ok && g.data.tasks.length === 0) { await op(cli, 'u-ram', 'assignTasks', { projectId: pid }); await op(cli, 'u-ram', 'confirmPlanning', { projectId: pid, accept: true }); g = await op(cli, 'u-seeta', 'getProject', { projectId: pid }); } // demo scaffolding auto-approves
         if (g.ok && g.data.tasks[0] && !g.data.files['home/index.html']) await op(cli, 'u-seeta', 'runBuild', { projectId: pid, taskId: g.data.tasks[0].id });
         const me0: Me = who === 'seeta' ? { id: 'u-seeta', name: 'Seeta' } : { id: 'u-ram', name: 'Ram' };
         if (!cancelled) { setMe(me0); await refreshFor(me0.id, pid); go({ name: 'workspace', pid }); }
@@ -361,6 +361,9 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
       </div>
       {tab === 'chat' && <ChatView p={p} user={me.id} nameOf={nameOf} msgs={msgs} tasks={tasks} owner={owner} thread={activeThread} setThread={setThread}
         realAi={(() => { const a = p.members.find((m) => m.userId === me.id)?.ai; return !!(a?.provider && (a.kind === 'own' || owner) && keyring.has(me.id, a.provider)); })()}
+        onConfirm={async (accept: boolean, reassign: Record<number, string>) => {
+          await actOp('confirmPlanning', { projectId: pid, accept, reassign }, pid);
+        }}
         onAssign={async () => {
           const a = p.members.find((m) => m.userId === me.id)?.ai;
           const provider = a?.provider && owner ? providerFor(me.id, a.provider) : null;
@@ -402,7 +405,8 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   );
 }
 
-function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, realAi, onAssign, onBuild, onCancel, openCode, err }: Record<string, any>) {
+function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, realAi, onAssign, onBuild, onCancel, openCode, onConfirm, err }: Record<string, any>) {
+  const [reassign, setReassign] = useState<Record<number, string>>({});
   const myTask = !owner ? (tasks.find((t: any) => t.id === thread) ?? tasks[0]) : tasks.find((t: any) => t.id === thread);
   return (
     <div className="screen">
@@ -415,7 +419,24 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, real
       {!owner && tasks.length > 1 && <div className="row wrap" style={{ marginBottom: 8 }}>{tasks.map((t: any) => <button key={t.id} className={'chip small' + (thread === t.id ? ' on' : '')} onClick={() => setThread(t.id)}>{t.folder}</button>)}</div>}
       {!owner && myTask && <div className="card"><strong>{myTask.title}</strong><div className="muted">Folder: {myTask.folder}</div></div>}
       {!owner && !myTask && <div className="empty">You have no task yet. The owner's AI assigns features from the project prompt.</div>}
-      {owner && p.tasks.length === 0 && (
+      {owner && p.proposedPlan && (
+        <div className="card" role="region" aria-label="Proposed plan"><strong>Review the proposed split</strong>
+          <p className="muted">Nothing is assigned yet. Approve to create these tasks, reassign a feature first, or discard and re-run.</p>
+          {p.proposedPlan.map((t: any, i: number) => (
+            <div key={t.folder} className="row spread" style={{ alignItems: 'center', marginTop: 6 }}>
+              <div><strong>{t.folder}</strong> {t.title}{t.deps?.length ? <span className="muted"> - after {t.deps.join(', ')}</span> : ''}</div>
+              <select aria-label={`Assign ${t.folder}`} value={reassign[i] ?? t.assigneeId} onChange={(e) => setReassign({ ...reassign, [i]: e.target.value })}>
+                {p.members.filter((m: any) => m.role === 'teammate').map((m: any) => <option key={m.userId} value={m.userId}>{nameOf(m.userId)}</option>)}
+              </select>
+            </div>
+          ))}
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="primary" onClick={() => onConfirm(true, reassign)}>Approve plan</button>
+            <button className="small" onClick={() => onConfirm(false, {})}>Discard</button>
+          </div>
+        </div>
+      )}
+      {owner && !p.proposedPlan && p.tasks.length === 0 && (
         <div className="card"><strong>Ready to divide the work?</strong><p className="muted">{realAi ? 'Your AI reads PRD.md and assigns a folder to each teammate by interest.' : 'The simulated AI reads PRD.md and assigns a folder to each teammate by interest.'}</p>
           <button className="primary" onClick={onAssign} disabled={p.members.length < 2}>{p.members.length < 2 ? 'Waiting for teammates' : realAi ? 'Assign tasks' : 'Assign tasks (simulated)'}</button></div>
       )}
@@ -597,6 +618,7 @@ function TasksView({ p, nameOf, onStatus, actOp, err }: { p: ProjectView; nameOf
           <div className="row spread"><strong>{t.title}</strong><span className="tag">{t.status.replace('_', ' ')}</span></div>
           <p className="muted">{t.detail}</p>
           <div className="muted">Assigned to {nameOf(t.assigneeId)}. Folder {t.folder}</div>
+          {t.deps?.length ? <div className="muted">Depends on: {t.deps.join(', ')} - merge those first.</div> : null}
           <div className="row wrap" style={{ marginTop: 8 }}>{(['todo', 'in_progress', 'done'] as const).map((s) => <button key={s} className={'chip small' + (t.status === s ? ' on' : '')} onClick={() => onStatus(t.id, s)}>{s.replace('_', ' ')}</button>)}</div>
           {reviewLabel(t)}
           {t.status === 'done' && t.review?.state !== 'accepted' && (
@@ -705,4 +727,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-                                                                    }
+                                                            }
