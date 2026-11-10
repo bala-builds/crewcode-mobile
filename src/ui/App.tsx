@@ -812,7 +812,7 @@ function TeamSheet({ p, user, nameOf, actOp, close, err, backupJson, setBackupJs
         </div>
       ))}
       {owner && <div className="card"><strong>Backup</strong><p className="muted">Owner only. Export downloads a JSON snapshot. Restoring replaces the whole project; open editors on older versions will conflict loudly.</p>
-        <div className="row spread" style={{ marginTop: 4 }}><div className="grow"><strong>Google Drive backup</strong><div className="muted">Your standing choice: project code lives in your own Google Drive (minimum drive.file scope - only files this app creates).</div></div>
+        <div className="row spread" style={{ marginTop: 4 }}><div className="grow"><strong>Google Drive backup</strong><div className="muted">Paused: project storage is moving to GitHub instead. Drive backup is not connected and this control stays off.</div></div>
           <span className="tag">{driveStatus({}).configured ? 'configured' : 'not connected'}</span></div>
         <p className="muted">{driveStatus({}).reason ?? ''}</p>
         <div className="row wrap" style={{ marginTop: 4 }}>
@@ -829,8 +829,8 @@ function TeamSheet({ p, user, nameOf, actOp, close, err, backupJson, setBackupJs
           </div>
         </>}
       </div>}
-      {owner && <div className="card"><div className="row spread"><div className="grow"><strong>Share my AI model</strong><div className="muted">Teammates can use it without seeing the key.</div></div>
-        <button className={'chip' + (p.ownerKeySharing ? ' on' : '')} aria-pressed={p.ownerKeySharing} onClick={() => actOp('setOwnerKeySharing', { projectId: p.id, on: !p.ownerKeySharing })}>{p.ownerKeySharing ? 'On' : 'Off'}</button></div></div>}
+      {owner && <div className="card"><div className="row spread"><div className="grow"><strong>Share my AI model</strong><div className="muted">Not available yet: there is no relay that lets teammates run builds on the owner's key, so this stays off. Teammates add their own key under AI access.</div></div>
+        <button className="chip" disabled title="Not implemented yet">Unavailable</button></div></div>}
     </>
   );
   if (inline) return <div className="screen">{inner}</div>;
@@ -873,8 +873,8 @@ function SettingsView({ p, me, go, actOp }: { p: ProjectView; me: Me; go: (s: Sc
         <div className="row" style={{ marginTop: 8 }}><button className="small" onClick={() => go({ name: 'ai', pid: p.id })}>Configure AI access</button></div>
         <div className="muted" style={{ marginTop: 6 }}>Provider keys are stored only in this browser, never sent to teammates.</div>
       </div>
-      {owner && <div className="card"><div className="row spread"><div className="grow"><strong>Share my AI model</strong><div className="muted">Teammates can use it without seeing the key.</div></div>
-        <button className={'chip' + (p.ownerKeySharing ? ' on' : '')} aria-pressed={p.ownerKeySharing} onClick={() => actOp('setOwnerKeySharing', { projectId: p.id, on: !p.ownerKeySharing })}>{p.ownerKeySharing ? 'On' : 'Off'}</button></div></div>}
+      {owner && <div className="card"><div className="row spread"><div className="grow"><strong>Share my AI model</strong><div className="muted">Not available yet: there is no relay that lets teammates run builds on the owner's key, so this stays off. Teammates add their own key under AI access.</div></div>
+        <button className="chip" disabled title="Not implemented yet">Unavailable</button></div></div>}
       <div className="card">
         <strong>Sign-in</strong>
         <div className="muted" style={{ marginTop: 6 }}>Test identities only right now. Real GitHub sign-in is being connected (app registered, not yet wired in).</div>
@@ -926,4 +926,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-                                         }
+}
