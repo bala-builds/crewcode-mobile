@@ -307,6 +307,25 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     expect(text()).not.toContain('Backup');
   });
 
+  it('owner sees the Drive backup section disabled without a confirmed client ID; teammate does not', async () => {
+    await click('Ram');
+    await clickCard('Habit Tracker');
+    await click('Team');
+    expect(text()).toContain('Google Drive backup');
+    expect(text()).toContain('not connected');
+    expect(text()).toContain('no confirmed Google OAuth client ID');
+    const btn = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Save backup to Google Drive') as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    expect(btn.disabled).toBe(true);
+    await click('Close');
+    await click('Back');
+    await click('Switch');
+    await click('Seeta');
+    await clickCard('Habit Tracker');
+    await click('Team');
+    expect(text()).not.toContain('Google Drive backup');
+  });
+
   it('owner sees an expired team code and regenerating reopens joining', async () => {
     (api as any).state.projects[0].team.expiresAt = Date.now() - 1000; // force expiry
     await click('Ram');
