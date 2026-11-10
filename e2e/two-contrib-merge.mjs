@@ -62,6 +62,9 @@ try{
  // owner assigns both tasks via the UI
  await A.waitForFunction(()=>document.body.innerText.includes('Assign tasks'),{timeout:15000});
  for(const h of await A.$$('button')){ if((await h.evaluate(e=>e.textContent.trim())).startsWith('Assign tasks')){await h.click();break;} }
+ // Owner gate: the split is a proposal until approved.
+ await A.waitForFunction(()=>document.body.innerText.includes('Review the proposed split'),{timeout:15000});
+ await click(A,'Approve plan');
  const pid=(await api({as:'u-ram',op:'listProjects'}))[0].id;
  let seetaTask,hanumaTask;
  for(let i=0;i<25;i++){ const q=await api({as:'u-ram',op:'getProject',args:{projectId:pid}}); seetaTask=q.tasks.find(t=>t.assigneeId==='u-seeta'); hanumaTask=q.tasks.find(t=>t.assigneeId==='u-hanuma'); if(seetaTask&&hanumaTask) break; await sleep(1000); }
