@@ -42,7 +42,7 @@ var LOCAL_TOOL_HANDLERS = {
 		const missing = shared.filter((n) => !contract.includes(n));
 		return `Review of ${path}: ${lines} lines. ` + (shared.length ? `Shared names used: ${shared.join(", ")}.` : "No shared names used.") + (missing.length ? ` Not in the contract: ${missing.join(", ")}.` : " All shared names match the contract.");
 	},
-	"cloudflare-security": (content, _contract, path) => {
+	"secret-scan": (content, _contract, path) => {
 		const found = scanForKeys(content);
 		return found.length ? `Security scan of ${path}: ${found.length} possible secret(s) found and masked: ${found.join(", ")}. Remove them.` : `Security scan of ${path}: no keys or secrets found.`;
 	},
@@ -83,19 +83,28 @@ if (process.env.CREWCODE_PROBE === "1") {
 // src/core/skills.ts
 var CATALOG = [
 	{
-		id: "claude-design",
-		label: "Claude Design",
+		id: "frontend-design",
+		label: "Claude Design (frontend-design skill)",
 		kind: "prebuilt",
-		summary: "Design helper (placeholder name from your list). Not runnable in this build.",
+		summary: "Anthropic's open-source frontend-design skill: design guidance for building web interfaces (github.com/anthropics/skills). Needs to read the contract and write design files into your folder; not runnable in this build.",
 		permissions: ["Read the shared contract", "Write inside the member's own folder"],
 		verified: false,
 		caps: ["read_scope", "write_scope"]
 	},
 	{
 		id: "cloudflare-security",
+		label: "Cloudflare security MCP",
+		kind: "mcp",
+		summary: "Cloudflare's official MCP servers for security and Zero Trust configuration (developers.cloudflare.com). Remote service: needs network access and your Cloudflare account. Not runnable in this build.",
+		permissions: ["Network access to Cloudflare", "Your Cloudflare account"],
+		verified: false,
+		caps: ["network", "execute"]
+	},
+	{
+		id: "secret-scan",
 		label: "Local secret scan",
 		kind: "prebuilt",
-		summary: "Deterministic local scan of one in-scope file for key-shaped strings, findings masked. (From your list as \"cloudflare security\" - this is not the Cloudflare service.)",
+		summary: "Deterministic local scan of one in-scope file for key-shaped strings, findings masked. Runs here, no network.",
 		permissions: ["Read files in the member's own folder"],
 		verified: false,
 		caps: ["read_scope"]
@@ -104,7 +113,7 @@ var CATALOG = [
 		id: "code-review",
 		label: "Local shared-name check",
 		kind: "skill",
-		summary: "Deterministic local check of one in-scope file: lists @shared names and compares them to CONTRACT.md. Not a general code review.",
+		summary: "Deterministic local check of one in-scope file: lists @shared names and compares them to CONTRACT.md. Not a general code review. Runs here, no network.",
 		permissions: ["Read files in the member's own folder"],
 		verified: false,
 		caps: ["read_scope"]
@@ -113,7 +122,7 @@ var CATALOG = [
 		id: "docs-mcp",
 		label: "Docs outline",
 		kind: "mcp",
-		summary: "Example MCP-shaped tool: outlines one in-scope document (headings and line count). Runs locally; no network.",
+		summary: "Local MCP tool: outlines one in-scope document (headings and line count). Runs locally; no network.",
 		permissions: ["Read files in the member's own scope"],
 		verified: false,
 		caps: ["read_scope"]
