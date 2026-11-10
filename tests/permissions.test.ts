@@ -10,8 +10,8 @@ describe('access rules with dummy identities', () => {
   const hanumaTask = p.tasks.find((t) => t.assigneeId === 'u-hanuma')!;
 
   it('gives each teammate exactly one task and one folder', () => {
-    expect(seetaTask.folder).toBe('frontend/');
-    expect(hanumaTask.folder).toBe('backend/');
+    expect(seetaTask.folder).toBe('home/');
+    expect(hanumaTask.folder).toBe('settings/');
     expect(new Set(p.tasks.map((t) => t.folder)).size).toBe(p.tasks.length);
   });
   it('teammate sees only their tasks', () => {
@@ -26,9 +26,9 @@ describe('access rules with dummy identities', () => {
     expect(canAccess(p, 'u-outsider', 'read', 'PRD.md')).toBe(false);
   });
   it('teammate can write only in own folder', () => {
-    expect(canAccess(p, 'u-seeta', 'write', 'frontend/app.ts')).toBe(true);
-    expect(canAccess(p, 'u-seeta', 'write', 'backend/server.ts')).toBe(false);
-    expect(canAccess(p, 'u-seeta', 'read', 'backend/server.ts')).toBe(false);
+    expect(canAccess(p, 'u-seeta', 'write', 'home/app.ts')).toBe(true);
+    expect(canAccess(p, 'u-seeta', 'write', 'settings/server.ts')).toBe(false);
+    expect(canAccess(p, 'u-seeta', 'read', 'settings/server.ts')).toBe(false);
   });
   it('teammate reads root documents but cannot write them', () => {
     for (const f of ['PRD.md', 'AGENT_INSTRUCTIONS.md', 'CONTRACT.md']) {
@@ -37,32 +37,32 @@ describe('access rules with dummy identities', () => {
     }
   });
   it('rejects path tricks', () => {
-    for (const bad of ['frontend/../backend/x.ts', '../etc/passwd', '/frontend/a.ts', 'frontend\\..\\a', './frontend/a.ts', '']) {
+    for (const bad of ['home/../settings/x.ts', '../etc/passwd', '/home/a.ts', 'frontend\\..\\a', './home/a.ts', '']) {
       expect(normalizePath(bad)).toBeNull();
       expect(canAccess(p, 'u-seeta', 'write', bad)).toBe(false);
     }
-    expect(canAccess(p, 'u-seeta', 'write', 'frontend2/a.ts')).toBe(false); // sibling folder with the same prefix
+    expect(canAccess(p, 'u-seeta', 'write', 'home2/a.ts')).toBe(false); // sibling folder with the same prefix
   });
   it('saveFile refuses edits outside folder and leaves state untouched', () => {
-    const r = saveFile(state, pid, 'u-seeta', 'backend/server.ts', 'x');
+    const r = saveFile(state, pid, 'u-seeta', 'settings/server.ts', 'x');
     expect(r.ok).toBe(false);
-    const good = ok(saveFile(state, pid, 'u-seeta', 'frontend/index.html', '<p>hi</p>'));
-    expect(good.state.projects[0].files['frontend/index.html']).toBe('<p>hi</p>');
-    expect(state.projects[0].files['frontend/index.html']).toBeUndefined();
+    const good = ok(saveFile(state, pid, 'u-seeta', 'home/index.html', '<p>hi</p>'));
+    expect(good.state.projects[0].files['home/index.html']).toBe('<p>hi</p>');
+    expect(state.projects[0].files['home/index.html']).toBeUndefined();
   });
   it('saveFile creates a new file inside the assignee folder; outside paths refused; blind re-create conflicts', () => {
-    const created = ok(saveFile(state, pid, 'u-seeta', 'frontend/styles.css', 'body{}'));
+    const created = ok(saveFile(state, pid, 'u-seeta', 'home/styles.css', 'body{}'));
     const pv = created.state.projects[0];
-    expect(pv.files['frontend/styles.css']).toBe('body{}');
-    expect(pv.fileRevs['frontend/styles.css']).toBe(1);
-    expect(state.projects[0].files['frontend/styles.css']).toBeUndefined(); // original state untouched
+    expect(pv.files['home/styles.css']).toBe('body{}');
+    expect(pv.fileRevs['home/styles.css']).toBe(1);
+    expect(state.projects[0].files['home/styles.css']).toBeUndefined(); // original state untouched
     // outside the folder, root files, and path tricks are still refused for creation
-    expect(saveFile(state, pid, 'u-seeta', 'backend/new.ts', 'x').ok).toBe(false);
+    expect(saveFile(state, pid, 'u-seeta', 'settings/new.ts', 'x').ok).toBe(false);
     expect(saveFile(state, pid, 'u-seeta', 'PRD.md', 'x').ok).toBe(false);
-    expect(saveFile(state, pid, 'u-seeta', 'frontend/../backend/x.ts', 'x').ok).toBe(false);
+    expect(saveFile(state, pid, 'u-seeta', 'home/../settings/x.ts', 'x').ok).toBe(false);
     // baseRev 0 as "must not exist": once the file exists, a blind create conflicts instead of overwriting
-    expect(saveFile(created.state, pid, 'u-seeta', 'frontend/styles.css', 'other', 0).ok).toBe(false);
-    expect(created.state.projects[0].files['frontend/styles.css']).toBe('body{}');
+    expect(saveFile(created.state, pid, 'u-seeta', 'home/styles.css', 'other', 0).ok).toBe(false);
+    expect(created.state.projects[0].files['home/styles.css']).toBe('body{}');
     // the owner can create anywhere, including a folder with no files yet
     const ownerMade = ok(saveFile(state, pid, 'u-ram', 'docs/notes.md', 'hi'));
     expect(ownerMade.state.projects[0].files['docs/notes.md']).toBe('hi');
