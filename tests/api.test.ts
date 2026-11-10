@@ -24,10 +24,10 @@ describe('server-side permission enforcement', () => {
   });
   it('write outside own folder is refused by the server and file is unchanged', () => {
     const { api, pid } = setup();
-    const r = api.call({ as: 'u-seeta', op: 'saveFile', args: { projectId: pid, path: 'backend/x.ts', content: 'x' } });
+    const r = api.call({ as: 'u-seeta', op: 'saveFile', args: { projectId: pid, path: 'outside/x.ts', content: 'x' } });
     expect(r.ok).toBe(false);
     expect(api.call({ as: 'u-seeta', op: 'saveFile', args: { projectId: pid, path: '../PRD.md', content: 'x' } }).ok).toBe(false);
-    expect(api.call({ as: 'u-seeta', op: 'saveFile', args: { projectId: pid, path: 'frontend/a.ts', content: 'ok' } }).ok).toBe(true);
+    expect(api.call({ as: 'u-seeta', op: 'saveFile', args: { projectId: pid, path: 'home/a.ts', content: 'ok' } }).ok).toBe(true);
   });
   it('teammate cannot use owner operations', () => {
     const { api, pid } = setup();
@@ -48,17 +48,17 @@ describe('API parity: skills, conflicts, backup', () => {
     const { api, pid } = setup();
     // Teammate adds; unapproved -> refused.
     expect(api.call({ as: 'u-seeta', op: 'addSkill', args: { projectId: pid, skillId: 'code-review' } }).ok).toBe(true);
-    expect(api.call({ as: 'u-seeta', op: 'runSkill', args: { projectId: pid, skillId: 'code-review', path: 'frontend/a.ts' } }).ok).toBe(false);
+    expect(api.call({ as: 'u-seeta', op: 'runSkill', args: { projectId: pid, skillId: 'code-review', path: 'home/a.ts' } }).ok).toBe(false);
     // Owner approves; out-of-scope path still refused; in-scope works.
     expect(api.call({ as: 'u-ram', op: 'approveSkill', args: { projectId: pid, skillId: 'code-review' } }).ok).toBe(true);
-    expect(api.call({ as: 'u-seeta', op: 'runSkill', args: { projectId: pid, skillId: 'code-review', path: 'backend/x.ts' } }).ok).toBe(false);
-    api.call({ as: 'u-seeta', op: 'saveFile', args: { projectId: pid, path: 'frontend/a.ts', content: 'export {};\n' } });
-    const run = api.call({ as: 'u-seeta', op: 'runSkill', args: { projectId: pid, skillId: 'code-review', path: 'frontend/a.ts' } }) as any;
+    expect(api.call({ as: 'u-seeta', op: 'runSkill', args: { projectId: pid, skillId: 'code-review', path: 'settings/x.ts' } }).ok).toBe(false);
+    api.call({ as: 'u-seeta', op: 'saveFile', args: { projectId: pid, path: 'home/a.ts', content: 'export {};\n' } });
+    const run = api.call({ as: 'u-seeta', op: 'runSkill', args: { projectId: pid, skillId: 'code-review', path: 'home/a.ts' } }) as any;
     expect(run.ok).toBe(true);
-    expect(run.data.output).toContain('Review of frontend/a.ts');
+    expect(run.data.output).toContain('Review of home/a.ts');
     // Removal ends access.
     expect(api.call({ as: 'u-ram', op: 'removeSkill', args: { projectId: pid, skillId: 'code-review' } }).ok).toBe(true);
-    expect(api.call({ as: 'u-seeta', op: 'runSkill', args: { projectId: pid, skillId: 'code-review', path: 'frontend/a.ts' } }).ok).toBe(false);
+    expect(api.call({ as: 'u-seeta', op: 'runSkill', args: { projectId: pid, skillId: 'code-review', path: 'home/a.ts' } }).ok).toBe(false);
   });
 
   it('saveFile with a stale baseRev conflicts through the API', () => {
