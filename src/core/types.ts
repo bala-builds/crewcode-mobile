@@ -42,6 +42,8 @@ export interface Task {
   detail: string;
   assigneeId: string;
   folder: string; // e.g. "frontend/"
+  /** Folders this feature depends on; merge is refused until every one is itself merged. */
+  deps?: string[];
   status: TaskStatus;
   run?: TaskRun;
   runError?: string;
@@ -74,6 +76,8 @@ export interface Project {
   ownerKeySharing: boolean;
   /** true while the owner's AI is dividing tasks; a late provider result is discarded once cleared */
   planning?: boolean;
+  /** Plan awaiting the owner's review. Tasks are created only when the owner approves it. */
+  proposedPlan?: import('./orchestrator').PlannedTask[];
   skills: ProjectSkill[];
 }
 
