@@ -19,7 +19,8 @@ const MASTER_PROMPT = [
   '- Every task has exactly one assignee and exactly one folder.',
   '- No two tasks share a folder.',
   '- Folders are relative paths ending in / and must not contain ..',
-  '- Reply with ONLY a JSON array, no prose: [{"title":string,"detail":string,"assignee":string,"folder":string}]',
+  '- Reply with ONLY a JSON array, no prose: [{"title":string,"detail":string,"assignee":string,"folder":string,"dependsOn":string[]}]',
+  '- "dependsOn" is optional: folders of other tasks in your plan that this feature needs merged first. Omit it when there are none.',
   '- "assignee" must be one of the member names listed below.',
 ].join('\n');
 
@@ -77,8 +78,11 @@ export function parsePlanJson(raw: string, members: Member[], users: TestUser[] 
     if (typeof o.title !== 'string' || typeof o.detail !== 'string' || typeof o.assignee !== 'string' || typeof o.folder !== 'string') {
       return { ok: false, error: 'A task entry was missing title, detail, assignee or folder as strings.' };
     }
+    if (o.dependsOn !== undefined && (!Array.isArray(o.dependsOn) || o.dependsOn.some((d) => typeof d !== 'string'))) {
+      return { ok: false, error: 'A task entry had a dependsOn that was not a string array.' };
+    }
     const assigneeId = byName.get(o.assignee) ?? byName.get(o.assignee.toLowerCase()) ?? o.assignee;
-    plan.push({ title: o.title, detail: o.detail, assigneeId, folder: o.folder });
+    plan.push({ title: o.title, detail: o.detail, assigneeId, folder: o.folder, deps: o.dependsOn as string[] | undefined });
   }
   return { ok: true, plan };
 }
