@@ -467,10 +467,16 @@ function PreviewView({ p }: { p: ProjectView }) {
 }
 
 function TasksView({ p, nameOf, onStatus, actOp, err }: { p: ProjectView; nameOf: (id: string) => string; onStatus: (id: string, s: TaskStatus) => void; actOp: (name: string, args: Record<string, unknown>) => Promise<any>; err: string | null }) {
+  const [mergeConflict, setMergeConflict] = useState<string | null>(null);
+  const merge = async (taskId: string, force = false) => {
+    const r = await actOp('acceptTaskMerge', { projectId: p.id, taskId, force });
+    if (r?.ok) { setMergeConflict(null); return; }
+    if (r && !r.ok && typeof r.error === 'string' && r.error.includes('was changed after the last merge')) setMergeConflict(taskId);
+  };
   const reviewLabel = (t: ProjectView['tasks'][number]) => {
     const r = t.review;
     if (!r) return null;
-    if (r.state === 'accepted') return <div className="muted" style={{ marginTop: 8 }}>Merged into the project.</div>;
+    if (r.state === 'accepted') return <div className="muted" style={{ marginTop: 8 }}>Merged into main/{t.folder} - the owner sees it in the main folder.</div>;
     if (r.state === 'submitted') return <div className="muted" style={{ marginTop: 8 }}>Sent for merge review.</div>;
     if (r.state === 'ready') return <div className="muted" style={{ marginTop: 8 }}>Check passed. Waiting for the owner to merge.</div>;
     return <div className="err" role="alert" style={{ marginTop: 8 }}>Changes requested: {r.findings.map((f) => `${f.name} in ${f.path}`).join(', ')} - not in CONTRACT.md</div>;
@@ -493,10 +499,15 @@ function TasksView({ p, nameOf, onStatus, actOp, err }: { p: ProjectView; nameOf
                 <div className="muted">{t.title} - {nameOf(t.assigneeId)}</div>
                 {r.state === 'changes_requested' && <div className="err" role="alert">{r.findings.map((f) => `${f.name} in ${f.path}`).join(', ')} - not in CONTRACT.md</div>}
                 {stale && <div className="err" role="alert">The folder changed since the last check. Run it again before merging.</div>}
+                {mergeConflict === t.id && (
+                  <div className="err" role="alert">The merged copy in main/ was changed after the last merge. It was kept. Overwrite it only if this merge should replace those edits.
+                    <div className="row" style={{ marginTop: 8 }}><button className="small danger" onClick={() => merge(t.id, true)}>Overwrite the main copy</button></div>
+                  </div>
+                )}
                 {r.state !== 'accepted' && (
                   <div className="row wrap" style={{ marginTop: 8 }}>
                     <button className="small" onClick={() => actOp('runIntegrationReview', { projectId: p.id, taskId: t.id })}>Run check</button>
-                    <button className="small primary" disabled={r.state !== 'ready' || stale} onClick={() => actOp('acceptTaskMerge', { projectId: p.id, taskId: t.id })}>Merge</button>
+                    <button className="small primary" disabled={r.state !== 'ready' || stale} onClick={() => merge(t.id)}>Merge into main</button>
                   </div>
                 )}
               </div>
@@ -611,4 +622,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-                                                             }
+}
