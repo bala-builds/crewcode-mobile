@@ -38,6 +38,9 @@ describe('local HTTP API: full owner/teammate session', () => {
     expect((await call('u-hanuma', 'joinProject', { code, interests: ['backend'] })).ok).toBe(true);
     expect((await call('u-seeta', 'joinProject', { code, interests: ['frontend'] })).ok).toBe(true);
     expect((await call('u-ram', 'assignTasks', { projectId: pid })).ok).toBe(true);
+    // The async assign path proposes only; the owner approves before tasks exist.
+    expect((await call('u-ram', 'getProject', { projectId: pid })).data.tasks).toHaveLength(0);
+    expect((await call('u-ram', 'confirmPlanning', { projectId: pid, accept: true })).ok).toBe(true);
 
     // Teammate view is redacted: no team code, only own tasks.
     const sv = (await call('u-seeta', 'getProject', { projectId: pid })).data;
