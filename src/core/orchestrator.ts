@@ -145,7 +145,8 @@ export function toTasks(plan: PlannedTask[], newId: () => string): Task[] {
 export function simulateBuild(task: Task, projectName: string): Record<string, string> {
   const f = task.folder;
   return {
-    [`${f}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<!-- @shared PROJECT_NAME -->\n<p>Simulated page for: ${task.title}.</p>\n<button onclick="document.body.style.background='#eef'">Tap me</button>\n</body></html>\n`,
-    [`${f}api.ts`]: `// @shared API_BASE\n// Simulated backend for: ${task.title}\nexport const routes = ['/health'];\n`,
+    [`${f}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<!-- @shared PROJECT_NAME @shared API_BASE -->\n<p>Simulated page for: ${task.title}.</p>\n<p id="api">API: loading...</p>\n<button onclick="document.body.style.background='#eef'">Tap me</button>\n<script>fetch('/api/v1/health').then(r=>r.json()).then(j=>{document.getElementById('api').textContent='API says: '+j.status+' - '+j.feature;}).catch(()=>{document.getElementById('api').textContent='API: not reachable';});</script>\n</body></html>\n`,
+    // Plain-JS route module (no TS-only syntax, no imports): Preview runs it in a sandbox.
+    [`${f}api.ts`]: `// @shared API_BASE\n// Simulated backend for: ${task.title}\nexport async function handle({ method, path }) {\n  if (path === '/api/v1/health') return { status: 200, body: { status: 'ok', feature: '${task.title}' } };\n  return { status: 404, body: { error: 'not found' } };\n}\n`,
   };
 }
