@@ -83,10 +83,10 @@ if (process.env.CREWCODE_PROBE === "1") {
 // src/core/skills.ts
 var CATALOG = [
 	{
-		id: "frontend-design",
-		label: "Claude Design (frontend-design skill)",
+		id: "claude-design",
+		label: "Claude Design (Anthropic)",
 		kind: "prebuilt",
-		summary: "Anthropic's open-source frontend-design skill: design guidance for building web interfaces (github.com/anthropics/skills). Needs to read the contract and write design files into your folder; not runnable in this build.",
+		summary: "Verified: Anthropic's hosted Claude Design feature (claude.com/product/design) - chat-to-design artifacts with on-canvas editing, in Claude and Claude Code. A hosted product, not an installable prebuilt, so it cannot run inside this build. No open-source equivalent confirmed; Anthropic's frontend-design skill (github.com/anthropics/skills) is an unconfirmed candidate.",
 		permissions: ["Read the shared contract", "Write inside the member's own folder"],
 		verified: false,
 		caps: ["read_scope", "write_scope"]
@@ -95,7 +95,7 @@ var CATALOG = [
 		id: "cloudflare-security",
 		label: "Cloudflare security MCP",
 		kind: "mcp",
-		summary: "Cloudflare's official MCP servers for security and Zero Trust configuration (developers.cloudflare.com). Remote service: needs network access and your Cloudflare account. Not runnable in this build.",
+		summary: "Verified target: Cloudflare's official Cloudflare API MCP server at https://mcp.cloudflare.com/mcp - one remote server covering the whole Cloudflare API including Zero Trust and security products (developers.cloudflare.com/agents/model-context-protocol). Connect via OAuth from an MCP client; needs your Cloudflare account. Not runnable in this build.",
 		permissions: ["Network access to Cloudflare", "Your Cloudflare account"],
 		verified: false,
 		caps: ["network", "execute"]
