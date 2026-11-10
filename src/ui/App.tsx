@@ -6,6 +6,7 @@ import { buildTaskPrompt, parseBuildJson } from '../core/execution';
 import { planWithProvider } from '../core/planner';
 import { searchCatalog, CATALOG, localRunnable } from '../core/skills';
 import { integrationCheck, reviewFingerprint } from '../core/contract';
+import { driveStatus } from '../core/drive';
 import { HttpClient, op, type ClientData, type ProjectView } from './client';
 
 /**
@@ -609,7 +610,13 @@ function TeamSheet({ p, user, nameOf, actOp, close, err, backupJson, setBackupJs
           {owner && m.role !== 'owner' && <button className="small danger" style={{ marginTop: 8 }} onClick={() => actOp('removeMember', { projectId: p.id, targetId: m.userId })}>Remove</button>}
         </div>
       ))}
-      {owner && <div className="card"><strong>Backup</strong><p className="muted">Owner only. Export downloads a JSON snapshot. Restoring replaces the whole project; open editors on older versions will conflict loudly. Drive sync is a separate decision and is not built.</p>
+      {owner && <div className="card"><strong>Backup</strong><p className="muted">Owner only. Export downloads a JSON snapshot. Restoring replaces the whole project; open editors on older versions will conflict loudly.</p>
+        <div className="row spread" style={{ marginTop: 4 }}><div className="grow"><strong>Google Drive backup</strong><div className="muted">Your standing choice: project code lives in your own Google Drive (minimum drive.file scope - only files this app creates).</div></div>
+          <span className="tag">{driveStatus({}).configured ? 'configured' : 'not connected'}</span></div>
+        <p className="muted">{driveStatus({}).reason ?? ''}</p>
+        <div className="row wrap" style={{ marginTop: 4 }}>
+          <button className="small" disabled={!driveStatus({}).configured} title={driveStatus({}).reason}>Save backup to Google Drive</button>
+        </div>
         <div className="row wrap" style={{ marginTop: 8 }}>
           <button className="small" onClick={async () => { const r = await actOp('exportProject', { projectId: p.id }); if (r?.ok) setBackupJson(r.data.json); }}>Export</button>
         </div>
@@ -670,4 +677,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-}
+            }
