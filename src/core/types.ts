@@ -3,7 +3,10 @@ export type ProviderLabel = 'Gemini' | 'NVIDIA' | 'Grok' | 'Claude' | 'GPT';
 export const PROVIDER_LABELS: ProviderLabel[] = ['Gemini', 'NVIDIA', 'Grok', 'Claude', 'GPT'];
 
 /** Test identity only. This is NOT a login. Real authentication is the last phase. */
-export interface TestUser { id: string; name: string }
+export interface TestUser { id: string; name: string;
+  // Set only for accounts created through real GitHub sign-in. githubId is the
+  // immutable GitHub user id - the durable identity binding; the login can change.
+  githubId?: number; githubLogin?: string }
 
 export interface AiAccess {
   kind: 'owner' | 'own';
