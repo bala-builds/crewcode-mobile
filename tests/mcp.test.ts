@@ -65,9 +65,9 @@ describe('MCP server boundary (process isolation, permission-model-enforced)', (
   it('capability refusal happens before any MCP server spawn', () => {
     let st = seedState();
     const p = st.projects[0];
-    const a = addSkill(st, p.id, 'u-ram', 'claude-design'); expect(a.ok).toBe(true);
+    const a = addSkill(st, p.id, 'u-ram', 'frontend-design'); expect(a.ok).toBe(true);
     if (a.ok) st = a.state;
-    const r = runSkill(st, p.id, 'u-ram', 'claude-design', 'PRD.md');
+    const r = runSkill(st, p.id, 'u-ram', 'frontend-design', 'PRD.md');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain('write_scope');
   });
