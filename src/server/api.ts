@@ -159,6 +159,16 @@ export class Api {
     this.state = this.stamp(r.state); this.persist(this.state); return { ok: true };
   }
 
+  /** Server-side only, never a client op: find-or-create the account bound to a
+   * verified GitHub profile (immutable GitHub user id). Called after a real OAuth
+   * callback; test-mode clients cannot reach it with arbitrary ids. */
+  ensureGithubUser(githubId: number, login: string): string {
+    const r = S.upsertGithubUser(this.state, githubId, login);
+    if (!r.ok) throw new Error(r.ok === false ? r.error : 'upsert failed');
+    this.state = this.stamp(r.state); this.persist(this.state);
+    return r.userId;
+  }
+
   call(req: ApiRequest): ApiResponse {
     const { as: u, op, args = {} } = req;
     if (!this.state.users.some((x) => x.id === u)) return { ok: false, error: 'Unknown test identity.' };
