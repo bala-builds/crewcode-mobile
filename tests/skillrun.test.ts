@@ -79,9 +79,9 @@ describe('Phase 7: two tools install, run within scope, and can be removed', () 
 
   it('items declaring capabilities this build lacks are refused with the reason', () => {
     const { s, p } = setup();
-    let st = addSkill(s, p.id, 'u-ram', 'frontend-design'); // declares write_scope
+    let st = addSkill(s, p.id, 'u-ram', 'claude-design'); // declares write_scope
     if (!st.ok) throw new Error(st.error);
-    const run = runSkill(st.state, p.id, 'u-ram', 'frontend-design', 'PRD.md');
+    const run = runSkill(st.state, p.id, 'u-ram', 'claude-design', 'PRD.md');
     expect(run.ok).toBe(false);
     if (!run.ok) {
       expect(run.error).toContain('capabilities');
