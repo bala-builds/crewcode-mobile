@@ -48,6 +48,10 @@ export interface Task {
   /** Folders this feature depends on; merge is refused until every one is itself merged. */
   deps?: string[];
   status: TaskStatus;
+  /** Optional planning metadata (brief: priority, due dates, acceptance criteria). */
+  priority?: 'low' | 'medium' | 'high';
+  due?: string; // ISO date YYYY-MM-DD
+  acceptance?: string;
   run?: TaskRun;
   runError?: string;
   review?: TaskReview;
