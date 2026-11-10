@@ -23,6 +23,8 @@ export type ProjectView = {
   names: Record<string, string>; // display names for member ids; test identities only until Phase 10
   /** Proposed split awaiting owner review; only the owner's view carries it. */
   proposedPlan?: import('../core/orchestrator').PlannedTask[];
+  /** First line of the project PRD - a grounded one-line summary for list cards. */
+  summary: string;
 };
 
 export function viewFor(p: Project, userId: string, users: { id: string; name: string }[] = [], stateVersion?: number): ProjectView {
@@ -31,7 +33,7 @@ export function viewFor(p: Project, userId: string, users: { id: string; name: s
   for (const f of visibleFiles(p, userId)) { files[f] = p.files[f]; fileRevs[f] = p.fileRevs?.[f] ?? 0; }
   const owner = isOwner(p, userId);
   return {
-    id: p.id, name: p.name, role: owner ? 'owner' : 'teammate', ownerKeySharing: p.ownerKeySharing,
+    id: p.id, name: p.name, summary: (p.files['PRD.md'] ?? '').split('\n').map((l: string) => l.trim()).filter(Boolean)[0]?.replace(/^#+\s*/, '').slice(0, 120) ?? '', role: owner ? 'owner' : 'teammate', ownerKeySharing: p.ownerKeySharing,
     teamCode: owner ? p.team.code : undefined, // teammates never receive the code
     teamRevoked: owner ? p.team.revoked : undefined,
     teamExpiresAt: owner ? p.team.expiresAt : undefined, // teammates never learn code state
