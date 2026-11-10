@@ -125,9 +125,9 @@ describe('ai orchestration (simulated)', () => {
   it('assigns by interest and updates contract folder ownership', () => {
     const { state } = teamState();
     const p = state.projects[0];
-    expect(p.tasks.map((t) => t.folder).sort()).toEqual(['backend/', 'frontend/']);
-    expect(p.files['CONTRACT.md']).toContain('frontend/ : Seeta');
-    expect(p.files['CONTRACT.md']).toContain('backend/ : Hanuma');
+    expect(p.tasks.map((t) => t.folder).sort()).toEqual(['home/', 'settings/']);
+    expect(p.files['CONTRACT.md']).toContain('home/ : Seeta');
+    expect(p.files['CONTRACT.md']).toContain('settings/ : Hanuma');
   });
   it('plan with no teammates is valid and empty', () => {
     const s = seedState(); const pid = s.projects[0].id;
@@ -159,9 +159,9 @@ describe('ai orchestration (simulated)', () => {
     const { state, pid } = teamState(); const p = state.projects[0];
     const t = p.tasks.find((x) => x.assigneeId === 'u-seeta')!;
     const b = ok(runBuild(state, pid, 'u-seeta', t.id));
-    const files = Object.keys(b.state.projects[0].files).filter((f) => f.startsWith('frontend/'));
+    const files = Object.keys(b.state.projects[0].files).filter((f) => f.startsWith('home/'));
     expect(files.length).toBeGreaterThan(0);
-    expect(Object.keys(b.state.projects[0].files).filter((f) => f.startsWith('backend/'))).toEqual([]);
+    expect(Object.keys(b.state.projects[0].files).filter((f) => f.startsWith('settings/'))).toEqual([]);
     const noAi = ok(removeMember(state, pid, 'u-ram', 'u-outsider'));
     void noAi;
     const err = ok(runBuild(ok(setOwnerKeySharing(state, pid, 'u-ram', false)).state, pid, 'u-seeta', t.id));
@@ -185,11 +185,11 @@ describe('ai orchestration (simulated)', () => {
 describe('shared contract and integration check', () => {
   it('parses shared names and flags unlisted marks', () => {
     const { state } = teamState(); const p = state.projects[0];
-    expect(parseSharedNames(p.files['CONTRACT.md'])).toEqual(['PROJECT_NAME', 'API_BASE', 'THEME_COLOR']);
-    const files = { ...p.files, 'frontend/a.ts': '// @shared API_BASE\n// @shared SECRET_THING\n' };
-    const f = integrationCheck(p.files['CONTRACT.md'], files, 'frontend/');
-    expect(f).toEqual([{ path: 'frontend/a.ts', name: 'SECRET_THING', problem: 'unlisted_shared_name' }]);
-    expect(integrationCheck(p.files['CONTRACT.md'], files, 'backend/')).toEqual([]);
+    expect(parseSharedNames(p.files['CONTRACT.md'])).toEqual(['PROJECT_NAME', 'API_BASE', 'SESSION', 'ROUTES', 'THEME_COLOR']);
+    const files = { ...p.files, 'home/a.ts': '// @shared API_BASE\n// @shared SECRET_THING\n' };
+    const f = integrationCheck(p.files['CONTRACT.md'], files, 'home/');
+    expect(f).toEqual([{ path: 'home/a.ts', name: 'SECRET_THING', problem: 'unlisted_shared_name' }]);
+    expect(integrationCheck(p.files['CONTRACT.md'], files, 'settings/')).toEqual([]);
   });
 });
 
