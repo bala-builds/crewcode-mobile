@@ -210,8 +210,9 @@ describe('Phase 3 preview checks (web runtime)', () => {
   };
 
   it('edited code is what the preview shows, and the preview iframe is sandboxed', async () => {
-    await rerenderWithHash('#demo=seeta'); // teammate with a built frontend/index.html
+    await rerenderWithHash('#demo=seeta'); // teammate with a built home/index.html
     await clickTab('Code');
+    await click('home/index.html');
     const editor = document.querySelector('textarea.editor') as HTMLTextAreaElement;
     expect(editor.value.length).toBeGreaterThan(0);
     setVal(editor, editor.value + '\n<p>EDITED-MARKER-123</p>');
@@ -226,31 +227,31 @@ describe('Phase 3 preview checks (web runtime)', () => {
   it('teammate preview lists only files they can read', async () => {
     await rerenderWithHash('#demo=seeta');
     await clickTab('Preview');
-    expect(text()).toContain('frontend/index.html');
+    expect(text()).toContain('home/index.html');
     expect(text()).not.toContain('Preview of CONTRACT');
   });
 
   it('teammate creates a new file inside their folder from the Code tab; outside-folder and existing paths are refused', async () => {
-    await rerenderWithHash('#demo=seeta'); // teammate with a built frontend/index.html
+    await rerenderWithHash('#demo=seeta'); // teammate with a built home/index.html
     await clickTab('Code');
     await click('New file');
     const input = document.querySelector('input[aria-label="New file path"]') as HTMLInputElement;
-    expect(input.value).toBe('frontend/'); // prefilled with the teammate's folder
-    setVal(input, 'backend/sneaky.ts');
+    expect(input.value).toBe('home/'); // prefilled with the teammate's folder
+    setVal(input, 'outside/sneaky.ts');
     await click('Create');
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('inside your folder');
-    setVal(input, 'frontend/../backend/x.ts');
+    setVal(input, 'home/../settings/x.ts');
     await click('Create');
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('plain relative path');
-    setVal(input, 'frontend/index.html');
+    setVal(input, 'home/index.html');
     await click('Create');
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('already exists');
-    setVal(input, 'frontend/styles.css');
+    setVal(input, 'home/styles.css');
     await click('Create');
     await flush();
     expect(document.querySelector('[role="alert"]')).toBeNull();
     // the new file opens in the editor and is listed
-    expect(text()).toContain('frontend/styles.css');
+    expect(text()).toContain('home/styles.css');
     const editor = document.querySelector('textarea.editor') as HTMLTextAreaElement;
     expect(editor.readOnly).toBe(false);
     setVal(editor, 'body { margin: 0; }');
@@ -396,7 +397,7 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     expect(text()).not.toContain('Integration review');
     await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
     // Owner plants a mismatch in the teammate folder and the teammate submits the done task.
-    await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'frontend/index.html', content: '<p>@shared BOGUS_NAME</p>' } });
+    await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'home/index.html', content: '<p>@shared BOGUS_NAME</p>' } });
     const seetaTask = () => api.state.projects.find((x) => x.id === pid)!.tasks.find((t) => t.assigneeId === 'u-seeta')!;
     await api.call({ as: 'u-seeta', op: 'setTaskStatus', args: { projectId: pid, taskId: seetaTask().id, status: 'done' } });
     await api.call({ as: 'u-seeta', op: 'submitTaskForReview', args: { projectId: pid, taskId: seetaTask().id } });
@@ -407,11 +408,11 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     // Owner runs the check: the mismatch is reported and the merge stays blocked.
     await click('Run check');
     expect(text()).toContain('changes requested');
-    expect(text()).toContain('BOGUS_NAME in frontend/index.html');
+    expect(text()).toContain('BOGUS_NAME in home/index.html');
     const mergeBtn = btn('Merge into main') as HTMLButtonElement;
     expect(mergeBtn.disabled).toBe(true);
     // Fixing the file and re-running the check clears the flag and the merge goes through.
-    await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'frontend/index.html', content: '<p>@shared PROJECT_NAME</p>' } });
+    await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'home/index.html', content: '<p>@shared PROJECT_NAME</p>' } });
     await api.call({ as: 'u-seeta', op: 'submitTaskForReview', args: { projectId: pid, taskId: seetaTask().id } });
     await click('Back');
     await clickCard('Habit Tracker');
@@ -419,10 +420,10 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     await click('Run check');
     expect(text()).not.toContain('BOGUS_NAME');
     await click('Merge into main');
-    expect(text()).toContain('Merged into main/frontend/');
+    expect(text()).toContain('Merged into main/home/');
     // The accepted work now lives in the owner's main folder.
     await clickTab('Code');
-    expect(text()).toContain('main/frontend/index.html');
+    expect(text()).toContain('main/home/index.html');
     await clickTab('Tasks');
     // Teammates never see the owner review card.
     await click('Back');
@@ -442,7 +443,7 @@ describe('real AI flow (own key, stubbed fetch - no live call)', () => {
     keyring.set('u-seeta', 'Grok', { key: 'TESTKEY-UI-1', endpointId: 'groq', model: 'test-model' });
     const realFetch = globalThis.fetch;
     let seen: any;
-    (globalThis as any).fetch = async (u: any, i: any) => { seen = { u, i }; return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify({ message: 'Built the streak screen.', files: [{ path: 'frontend/index.html', content: '<h1>Real build</h1>' }] }) } }] }) }; };
+    (globalThis as any).fetch = async (u: any, i: any) => { seen = { u, i }; return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify({ message: 'Built the streak screen.', files: [{ path: 'home/index.html', content: '<h1>Real build</h1>' }] }) } }] }) }; };
     try {
       await click('Seeta');
       await clickCard('Habit Tracker');
@@ -452,7 +453,7 @@ describe('real AI flow (own key, stubbed fetch - no live call)', () => {
       expect(seen.i.headers.authorization).toBe('Bearer TESTKEY-UI-1');
       expect(text()).toContain('Built the streak screen.');
       expect(text()).not.toContain('Simulated build. Built the streak screen.');
-      expect(api.state.projects[0].files['frontend/index.html']).toBe('<h1>Real build</h1>');
+      expect(api.state.projects[0].files['home/index.html']).toBe('<h1>Real build</h1>');
     } finally { (globalThis as any).fetch = realFetch; keyring.clear(); }
   });
 });
@@ -615,7 +616,7 @@ describe('cross-session propagation (two open sessions)', () => {
     await B.click('Seeta');
     await B.clickCard('Habit Tracker');
     await B.clickTab('Code');
-    await B.click('frontend/index.html');
+    await B.click('home/index.html');
     // Seeta starts an unsaved edit in her file.
     const edB = () => hostB.querySelector('textarea.editor') as HTMLTextAreaElement;
     setVal(edB(), 'seeta unsaved draft');
