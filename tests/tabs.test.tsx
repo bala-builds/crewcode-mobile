@@ -157,6 +157,37 @@ describe('seven-tab workspace', () => {
     expect(shownAll.length).toBe(total);
   });
 
+  it('right sidebar counters, workload and actions stay in sync with real state', async () => {
+    await openSeed();
+    // Create real tasks through the simulated orchestration (seed starts with none).
+    setVal(document.querySelector('.composer textarea')!, 'build it');
+    await click('Send');
+    await click('Assign tasks (simulated)');
+    await click('Approve plan');
+    const rail = () => document.querySelector('.rrail')!.textContent ?? '';
+    const m = rail().match(/(\d+) of (\d+) done/);
+    expect(m).toBeTruthy();
+    const total = Number(m![2]);
+    expect(total).toBeGreaterThan(0);
+    // Mark one task done on the Tasks tab; the sidebar must update too.
+    await clickTab('Tasks');
+    const cards = [...document.querySelectorAll('.screen .card')].filter((c) => (c.textContent ?? '').includes('Assigned to'));
+    const doneBtn = [...cards[0].querySelectorAll('button')].find((b) => b.textContent?.trim() === 'done')!;
+    act(() => { doneBtn.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    await flush();
+    expect(rail()).toContain(`1 of ${total} done`);
+    // View all and Manage navigate to the real tabs.
+    const viewAll = [...document.querySelectorAll('.rrail button')].find((b) => b.textContent?.trim() === 'View all')!;
+    act(() => { viewAll.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    await flush();
+    expect(activeTab()).toBe('Tasks');
+    const teamCard = [...document.querySelectorAll('.rrail .card')].find((c) => c.querySelector('strong')?.textContent === 'Team')!;
+    const manage = [...teamCard.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Manage')!;
+    act(() => { manage.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    await flush();
+    expect(activeTab()).toBe('Team');
+  });
+
   it('composer draft survives tab switches', async () => {
     await openSeed();
     setVal(document.querySelector('.composer textarea')!, 'unsent note');
@@ -178,8 +209,15 @@ describe('seven-tab workspace', () => {
     expect(text()).toContain('Skills');
     expect(text()).toContain('MCP servers');
     expect(text()).toContain('Open-source prebuilt components');
+    expect(text()).toContain('Hosted services (not open-source, not installable here)');
     expect(text()).toContain('Claude Design');
     expect(text()).toContain('Cloudflare security MCP');
+    // Claude Design is a hosted service: it must NOT sit under open-source prebuilt.
+    const sections = [...document.querySelectorAll('.screen h3')].map((h) => ({ title: h.textContent, text: h.parentElement?.textContent ?? '' }));
+    const prebuilt = sections.find((x) => x.title === 'Open-source prebuilt components')!;
+    expect(prebuilt.text).not.toContain('Claude Design');
+    const hosted = sections.find((x) => (x.title ?? '').startsWith('Hosted services'))!;
+    expect(hosted.text).toContain('Claude Design');
     expect(text()).toContain('Hosted service - information only');
     expect(text()).toContain('Runs locally in this build');
     expect(text()).toContain('Needs a connection - not available in this build');
