@@ -19,6 +19,8 @@ export type ProjectView = {
   messages: ReturnType<typeof visibleMessages>; members: ReturnType<typeof visibleMembers>;
   skills: Project['skills'];
   names: Record<string, string>; // display names for member ids; test identities only until Phase 10
+  /** Proposed split awaiting owner review; only the owner's view carries it. */
+  proposedPlan?: import('../core/orchestrator').PlannedTask[];
 };
 
 export function viewFor(p: Project, userId: string, users: { id: string; name: string }[] = [], stateVersion?: number): ProjectView {
@@ -35,6 +37,7 @@ export function viewFor(p: Project, userId: string, users: { id: string; name: s
     teamJoinsUsed: owner ? p.team.joinsUsed ?? 0 : undefined,
     files, fileRevs, tasks: visibleTasks(p, userId), messages: visibleMessages(p, userId), members: visibleMembers(p, userId),
     skills: p.skills, stateVersion,
+    proposedPlan: owner ? p.proposedPlan : undefined, // teammates never see an unapproved split
     names: Object.fromEntries(p.members.map((m) => [m.userId, users.find((u) => u.id === m.userId)?.name ?? m.userId])),
   };
 }
@@ -155,7 +158,16 @@ export class Api {
       }
       case 'saveFile': return this.commit(S.saveFile(st, args.projectId, u, args.path, args.content, args.baseRev));
       case 'postPrompt': return this.commit(S.postPrompt(st, args.projectId, u, args.text, args.taskId ?? null));
-      case 'assignTasks': return this.commit(S.assignTasks(st, args.projectId, u));
+      case 'assignTasks': {
+        // Same gate as the async path: the deterministic plan is a proposal; the owner approves separately.
+        const started = S.startPlanning(st, args.projectId, u);
+        if (!started.ok) return this.commit(started);
+        const p0 = started.state.projects.find((x) => x.id === args.projectId)!;
+        const team = p0.members.filter((m) => m.role === 'teammate');
+        const plan = planTasks({ name: p0.name, files: p0.files, members: team }, started.state.users);
+        return this.commit(S.applyPlanning(started.state, args.projectId, { ok: true, plan }, { simulated: true }));
+      }
+      case 'confirmPlanning': return this.commit(S.confirmPlanning(st, args.projectId, u, { accept: !!args.accept, reassign: args.reassign as Record<number, string> | undefined }));
       case 'runBuild': {
         // The local server is synchronous: the client starts a run, and this request finishes it.
         const r = S.runBuild(st, args.projectId, u, args.taskId, {
