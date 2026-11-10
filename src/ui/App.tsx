@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ProviderLabel, TaskStatus } from '../core/types';
 import { PROVIDER_LABELS, ROOT_FILES } from '../core/types';
-import { PROVIDERS, keyring, maskKey } from '../core/providers';
+import { PROVIDERS, PROVIDER_ENDPOINTS, keyring, maskKey, providerFor } from '../core/providers';
+import { buildTaskPrompt, parseBuildJson } from '../core/execution';
+import { planWithProvider } from '../core/planner';
 import { searchCatalog, CATALOG, localRunnable } from '../core/skills';
 import { integrationCheck, reviewFingerprint } from '../core/contract';
 import { HttpClient, op, type ClientData, type ProjectView } from './client';
@@ -110,7 +112,7 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
 
   return (
     <div className="app">
-      <div className="banner">Test identities only. Not a login. Real sign-in is built last. AI is simulated; previews run real web files.</div>
+      <div className="banner">Test identities only. Not a login. Real sign-in is built last. AI answers are simulated until you add your own key; previews run real web files.</div>
       {err && screen.name !== 'workspace' && <div style={{ padding: 16 }}><Err text={err} /><button onClick={() => window.location.reload()}>Retry connection</button></div>}
       {screen.name === 'welcome' && <Welcome users={users} pick={(u) => { setMe(u); go({ name: 'home' }); }}
         register={async (name) => {
@@ -258,32 +260,54 @@ function Join({ go, join }: { go: (s: Screen) => void; join: (code: string, inte
 
 function AiAccess({ me, view, pid, load, go, save }: { me: Me; view: ProjectView | null; pid: string; load: () => Promise<ProjectView | null>; go: (s: Screen) => void; save: (access: unknown) => Promise<string | null> }) {
   const [v, setV] = useState<ProjectView | null>(view && view.id === pid ? view : null);
-  const [kind, setKind] = useState<'owner' | 'own'>('owner'); const [prov, setProv] = useState<ProviderLabel | null>(null); const [key, setKey] = useState(''); const [err, setErr] = useState<string | null>(null);
+  const [kind, setKind] = useState<'owner' | 'own'>('owner'); const [prov, setProv] = useState<ProviderLabel | null>(null); const [endpointId, setEndpointId] = useState<string | null>(null);
+  const [model, setModel] = useState(''); const [key, setKey] = useState(''); const [err, setErr] = useState<string | null>(null);
   useEffect(() => { if (!v) load().then((x) => setV(x)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (!v) return <div className="screen">Project not found.</div>;
   const owner = v.role === 'owner'; const sharing = owner || v.ownerKeySharing;
+  // A key makes real calls: the owner's own key for the owner model, your own key otherwise.
+  // A teammate on the owner model stays simulated until hosted key storage exists (auth-gated).
+  const keySection = (kind === 'own' || owner) && (
+    <>
+      <div className="row wrap">{PROVIDER_LABELS.map((l) => <button key={l} className={'chip' + (prov === l ? ' on' : '')} aria-pressed={prov === l} onClick={() => { setProv(l); setEndpointId(null); }}>{l}</button>)}</div>
+      {prov && <div className="note">{PROVIDERS.find((x) => x.label === prov)!.note}</div>}
+      {prov && PROVIDER_ENDPOINTS[prov].length > 1 && <div className="row wrap">{PROVIDER_ENDPOINTS[prov].map((e) => <button key={e.id} className={'chip' + (endpointId === e.id ? ' on' : '')} aria-pressed={endpointId === e.id} onClick={() => setEndpointId(e.id)}>{e.label}</button>)}</div>}
+      {prov && <><label htmlFor="mdl">Model</label>
+        <input id="mdl" value={model} onChange={(e) => setModel(e.target.value)} placeholder="Model name from your provider" autoComplete="off" />
+        <label htmlFor="k">API key</label>
+        <input id="k" type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Paste a key" autoComplete="off" />
+        {key && <p className="muted">Shown as {maskKey(key)}. Kept in memory on this device only. Calls go straight from this device to the provider.</p>}
+        {!key && kind === 'owner' && owner && <p className="muted">No key added: the owner model stays simulated.</p>}
+      </>}
+    </>
+  );
   return (
     <div className="screen">
       <h1>Choose your AI</h1>
-      <p className="muted">No real AI provider is connected in this build. Your choice is saved, answers are simulated.</p>
+      <p className="muted">Without a key, answers are simulated. With your own key, builds and planning call the real provider from this device.</p>
       <button className={'card block'} disabled={!sharing} aria-pressed={kind === 'owner'} onClick={() => setKind('owner')} style={{ textAlign: 'left', borderColor: kind === 'owner' ? 'var(--accent)' : undefined }}>
         <strong>{owner ? 'My model' : "Owner's AI model"}</strong>
-        <div className="muted">{sharing ? (owner ? 'Uses the key you add as owner. Never shown to teammates.' : "Uses the owner's key. You will never see it.") : 'The owner turned this off.'}</div>
+        <div className="muted">{sharing ? (owner ? 'Uses the key you add as owner. Never shown to teammates.' : "Uses the owner's key. You will never see it. Simulated in this build.") : 'The owner turned this off.'}</div>
       </button>
       <button className="card block" aria-pressed={kind === 'own'} onClick={() => setKind('own')} style={{ textAlign: 'left', borderColor: kind === 'own' ? 'var(--accent)' : undefined }}>
         <strong>My own API key</strong><div className="muted">Kept in memory on this device only. Not saved.</div>
       </button>
-      {kind === 'own' && <>
-        <div className="row wrap">{PROVIDER_LABELS.map((l) => <button key={l} className={'chip' + (prov === l ? ' on' : '')} aria-pressed={prov === l} onClick={() => setProv(l)}>{l}</button>)}</div>
-        {prov && <div className="note">{PROVIDERS.find((x) => x.label === prov)!.note}. These names are placeholders, not verified integrations.</div>}
-        <label htmlFor="k">API key</label>
-        <input id="k" type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Paste a key" autoComplete="off" />
-        {key && <p className="muted">Shown as {maskKey(key)}. Use a throwaway key. Nothing is sent anywhere.</p>}
-      </>}
+      {keySection}
       <Err text={err} />
       <button className="primary block" style={{ marginTop: 12 }} onClick={async () => {
-        if (kind === 'own') { if (!prov) return setErr('Pick a provider.'); if (!key.trim()) return setErr('Paste a key, or choose the owner model.'); keyring.set(me.id, prov, key.trim()); }
-        setErr(await save(kind === 'owner' ? { kind: 'owner' } : { kind: 'own', provider: prov! }));
+        const wantsKey = kind === 'own' || owner;
+        if (wantsKey && prov) {
+          const eps = PROVIDER_ENDPOINTS[prov];
+          const ep = eps.length === 1 ? eps[0] : eps.find((e) => e.id === endpointId);
+          if (!ep) return setErr('Pick which provider this is.');
+          if (!key.trim()) {
+            if (kind === 'own') return setErr('Paste a key, or choose the owner model.');
+          } else {
+            if (!model.trim()) return setErr('Enter the model name from your provider.');
+            keyring.set(me.id, prov, { key: key.trim(), endpointId: ep.id, model: model.trim() });
+          }
+        } else if (kind === 'own') return setErr('Pick a provider.');
+        setErr(await save(kind === 'owner' ? { kind: 'owner', provider: prov ?? undefined } : { kind: 'own', provider: prov! }));
       }}>Continue</button>
     </div>
   );
@@ -335,7 +359,30 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
         <button className="small" onClick={() => setSheet('skills')} aria-label="Add skills and MCPs">Add</button>
       </div>
       {tab === 'chat' && <ChatView p={p} user={me.id} nameOf={nameOf} msgs={msgs} tasks={tasks} owner={owner} thread={activeThread} setThread={setThread}
-        onAssign={() => actOp('assignTasks', { projectId: pid }, pid)} onBuild={(id: string, force: boolean) => actOp('runBuild', { projectId: pid, taskId: id, forceError: force, prompt: draftMemory.get(pid) ?? '' }, pid)} onCancel={(id: string) => actOp('cancelTaskRun', { projectId: pid, taskId: id }, pid)} openCode={(f: string) => { setOpen(f); setTab('code'); }} err={err} />}
+        realAi={(() => { const a = p.members.find((m) => m.userId === me.id)?.ai; return !!(a?.provider && (a.kind === 'own' || owner) && keyring.has(me.id, a.provider)); })()}
+        onAssign={async () => {
+          const a = p.members.find((m) => m.userId === me.id)?.ai;
+          const provider = a?.provider && owner ? providerFor(me.id, a.provider) : null;
+          if (!provider) { await actOp('assignTasks', { projectId: pid }, pid); return; }
+          const started = await actOp('startPlanning', { projectId: pid }, pid);
+          if (!started?.ok) return;
+          const users = Object.entries(p.names).map(([id, name]) => ({ id, name }));
+          const outcome = await planWithProvider(provider, { name: p.name, files: p.files, members: p.members.filter((m) => m.role === 'teammate') }, users);
+          await actOp('applyPlanning', { projectId: pid, outcome, simulated: false }, pid);
+        }}
+        onBuild={async (id: string, force: boolean) => {
+          const a = p.members.find((m) => m.userId === me.id)?.ai;
+          const provider = !force && a?.provider && (a.kind === 'own' || owner) ? providerFor(me.id, a.provider) : null;
+          if (!provider) { await actOp('runBuild', { projectId: pid, taskId: id, forceError: force, prompt: draftMemory.get(pid) ?? '' }, pid); return; }
+          const task = p.tasks.find((t) => t.id === id);
+          if (!task) return;
+          const started = await actOp('startTaskRun', { projectId: pid, taskId: id }, pid);
+          if (!started?.ok) return;
+          const res = await provider.complete(buildTaskPrompt(task, { name: p.name, files: p.files }, draftMemory.get(pid) ?? ''));
+          const result = res.ok ? parseBuildJson(res.text, task.folder) : res;
+          await actOp('applyTaskRun', { projectId: pid, taskId: id, result, simulated: false }, pid);
+        }}
+        onCancel={(id: string) => actOp('cancelTaskRun', { projectId: pid, taskId: id }, pid)} openCode={(f: string) => { setOpen(f); setTab('code'); }} err={err} />}
       {tab === 'code' && <CodeView p={p} open={open} setOpen={setOpen} editKey={editKey} onSave={(path, c, rev) => actOp('saveFile', { projectId: pid, path, content: c, baseRev: rev }, pid)} reload={() => load()} err={err} clearErr={clearErr} />}
       {tab === 'preview' && <PreviewView p={p} />}
       {tab === 'tasks' && <TasksView p={p} nameOf={nameOf} onStatus={(id, s) => actOp('setTaskStatus', { projectId: pid, taskId: id, status: s }, pid)} actOp={(n, a) => actOp(n, a, pid)} err={err} />}
@@ -354,7 +401,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   );
 }
 
-function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, onAssign, onBuild, onCancel, openCode, err }: Record<string, any>) {
+function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, realAi, onAssign, onBuild, onCancel, openCode, err }: Record<string, any>) {
   const myTask = !owner ? tasks[0] : tasks.find((t: any) => t.id === thread);
   return (
     <div className="screen">
@@ -367,8 +414,8 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, onAs
       {!owner && myTask && <div className="card"><strong>{myTask.title}</strong><div className="muted">Folder: {myTask.folder}</div></div>}
       {!owner && !myTask && <div className="empty">You have no task yet. The owner's AI assigns tasks from the project prompt and your interests.</div>}
       {owner && p.tasks.length === 0 && (
-        <div className="card"><strong>Ready to divide the work?</strong><p className="muted">The simulated AI reads PRD.md and assigns a folder to each teammate by interest.</p>
-          <button className="primary" onClick={onAssign} disabled={p.members.length < 2}>{p.members.length < 2 ? 'Waiting for teammates' : 'Assign tasks (simulated)'}</button></div>
+        <div className="card"><strong>Ready to divide the work?</strong><p className="muted">{realAi ? 'Your AI reads PRD.md and assigns a folder to each teammate by interest.' : 'The simulated AI reads PRD.md and assigns a folder to each teammate by interest.'}</p>
+          <button className="primary" onClick={onAssign} disabled={p.members.length < 2}>{p.members.length < 2 ? 'Waiting for teammates' : realAi ? 'Assign tasks' : 'Assign tasks (simulated)'}</button></div>
       )}
       <Err text={err} />
       <div className="chat">
@@ -377,7 +424,7 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, onAs
           const mine = m.authorId === user; const ai = m.authorId === 'ai';
           return (
             <div key={m.id} className={'bubble ' + (mine ? 'me' : ai ? 'ai' : 'other') + (m.kind === 'ai_error' ? ' error' : '')}>
-              {!mine && <div className="who">{nameOf(m.authorId)}{m.kind === 'ai_build' ? ' - simulated build' : ''}</div>}
+              {!mine && <div className="who">{nameOf(m.authorId)}{m.kind === 'ai_build' && m.simulated !== false ? ' - simulated build' : ''}</div>}
               {m.text}
               {m.kind === 'ai_build' && m.files?.length > 0 && <div style={{ marginTop: 8 }}><button className="small" onClick={() => openCode(m.files[0])}>{'</>'} Code ({m.files.length})</button></div>}
               {m.kind === 'ai_error' && myTask && <div style={{ marginTop: 8 }}><button className="small" onClick={() => onBuild(myTask.id, false)}>Retry</button></div>}
@@ -387,7 +434,7 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, onAs
       </div>
       {myTask && (
         <div className="row wrap" style={{ marginTop: 12 }}>
-          <button onClick={() => onBuild(myTask.id, false)} disabled={myTask.run === 'thinking'}>{myTask.run === 'thinking' ? 'AI thinking...' : 'Run simulated build'}</button>
+          <button onClick={() => onBuild(myTask.id, false)} disabled={myTask.run === 'thinking'}>{myTask.run === 'thinking' ? 'AI thinking...' : realAi ? 'Run build' : 'Run simulated build'}</button>
           {myTask.run === 'thinking' && <button onClick={() => onCancel(myTask.id)}>Stop</button>}
           <button onClick={() => onBuild(myTask.id, true)} disabled={myTask.run === 'thinking'} aria-label="Simulate an error">Simulate error</button>
         </div>
