@@ -33,6 +33,8 @@ export interface TaskReview {
   at: number;
   /** Immutable copy of the folder exactly as merged (set on acceptance). Later edits reopen the review. */
   snapshot?: Record<string, string>;
+  /** Content written into main/<path> at the last acceptance. A later change to a merged copy blocks the next merge unless the owner explicitly overwrites it - merged work is never silently replaced. */
+  merged?: Record<string, string>;
 }
 export interface Task {
   id: string;
