@@ -15,6 +15,7 @@ function setup() {
   const pid = api.state.projects[0].id;
   call(api, 'u-hanuma', 'joinProject', { code: 'DEM-123', interests: ['backend'] });
   call(api, 'u-ram', 'assignTasks', { projectId: pid });
+  call(api, 'u-ram', 'confirmPlanning', { projectId: pid, accept: true });
   return { api, pid };
 }
 
@@ -91,10 +92,15 @@ describe('real build flow through start/apply ops (fake provider)', () => {
     expect(call(api, 'u-seeta', 'applyPlanning', { projectId: pid, outcome, simulated: false }).ok).toBe(false);
     const applied = call(api, 'u-ram', 'applyPlanning', { projectId: pid, outcome, simulated: false });
     expect(applied.ok).toBe(true);
+    // Real-provider plan is a proposal: existing tasks stay untouched until the owner approves.
+    expect(api.state.projects[0].proposedPlan).toHaveLength(2);
+    expect(call(api, 'u-seeta', 'confirmPlanning', { projectId: pid, accept: true }).ok).toBe(false);
+    expect(call(api, 'u-ram', 'confirmPlanning', { projectId: pid, accept: true }).ok).toBe(true);
+    expect(api.state.projects[0].tasks).toHaveLength(2);
     const msg = api.state.projects[0].messages.at(-1)!;
     expect(msg.kind).toBe('ai_plan');
     expect(msg.simulated).toBe(false);
-    expect(msg.text).toContain('Plan:');
+    expect(msg.text).toContain('Plan approved by the owner:');
     expect(msg.text).not.toContain('Simulated');
   });
 
