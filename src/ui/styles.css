@@ -84,3 +84,10 @@ iframe { width: 100%; height: 55dvh; border: 1px solid var(--line); border-radiu
   .ws-main .tabs button.on { box-shadow: inset 0 -3px 0 var(--accent); }
   .home-top, .home-actions { display: none; }
 }
+
+/* Feature tabs: documents viewer + task progress. */
+.docview { max-height: 50vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; margin: 8px 0 0; }
+.progress { height: 8px; border-radius: 999px; background: var(--line, #e5e2dc); overflow: hidden; margin-top: 8px; }
+.progress > div { height: 100%; background: var(--accent, #2f6f4f); border-radius: 999px; transition: width .25s ease; }
+.tabs { overflow-x: auto; scrollbar-width: none; }
+.tabs button { flex: 0 0 auto; }
