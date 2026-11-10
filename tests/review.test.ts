@@ -45,13 +45,13 @@ describe('merge review (PRD F6, acceptance 9)', () => {
   it('mismatches are reported with file and name and block the merge', () => {
     let { state, pid, taskOf } = setup();
     const id = taskOf(state, 'u-seeta').id;
-    state = ok(saveFile(state, pid, 'u-seeta', 'frontend/index.html', '<p>@shared BOGUS_NAME</p>')).state;
+    state = ok(saveFile(state, pid, 'u-seeta', 'home/index.html', '<p>@shared BOGUS_NAME</p>')).state;
     state = ok(setTaskStatus(state, pid, 'u-seeta', id, 'done')).state;
     state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
     state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
     const r = taskOf(state, 'u-seeta').review!;
     expect(r.state).toBe('changes_requested');
-    expect(r.findings.map((f) => `${f.name} in ${f.path}`)).toContain('BOGUS_NAME in frontend/index.html');
+    expect(r.findings.map((f) => `${f.name} in ${f.path}`)).toContain('BOGUS_NAME in home/index.html');
     const blocked = acceptTaskMerge(state, pid, 'u-ram', id);
     expect(blocked.ok).toBe(false);
     if (!blocked.ok) expect(blocked.error).toMatch(/mismatch/i);
@@ -63,7 +63,7 @@ describe('merge review (PRD F6, acceptance 9)', () => {
     state = ok(setTaskStatus(state, pid, 'u-seeta', id, 'done')).state;
     state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
     state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
-    state = ok(saveFile(state, pid, 'u-seeta', 'frontend/app.ts', 'export const x = 1;')).state;
+    state = ok(saveFile(state, pid, 'u-seeta', 'home/app.ts', 'export const x = 1;')).state;
     const stale = acceptTaskMerge(state, pid, 'u-ram', id);
     expect(stale.ok).toBe(false);
     if (!stale.ok) expect(stale.error).toMatch(/changed since/i);
@@ -76,7 +76,7 @@ describe('merge review (PRD F6, acceptance 9)', () => {
     let { state, pid, taskOf } = setup();
     const sId = taskOf(state, 'u-seeta').id;
     const hId = taskOf(state, 'u-hanuma').id;
-    state = ok(saveFile(state, pid, 'u-hanuma', 'backend/api.ts', '// @shared SECRET_THING')).state;
+    state = ok(saveFile(state, pid, 'u-hanuma', 'settings/api.ts', '// @shared SECRET_THING')).state;
     for (const [uid, id] of [['u-seeta', sId], ['u-hanuma', hId]] as const) {
       state = ok(setTaskStatus(state, pid, uid, id, 'done')).state;
       state = ok(submitTaskForReview(state, pid, uid, id)).state;
@@ -91,12 +91,12 @@ describe('merge review (PRD F6, acceptance 9)', () => {
   it('a fix plus a fresh submit and check clears the mismatch and the merge goes through', () => {
     let { state, pid, taskOf } = setup();
     const id = taskOf(state, 'u-seeta').id;
-    state = ok(saveFile(state, pid, 'u-seeta', 'frontend/index.html', '<p>@shared BOGUS_NAME</p>')).state;
+    state = ok(saveFile(state, pid, 'u-seeta', 'home/index.html', '<p>@shared BOGUS_NAME</p>')).state;
     state = ok(setTaskStatus(state, pid, 'u-seeta', id, 'done')).state;
     state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
     state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
     expect(taskOf(state, 'u-seeta').review?.state).toBe('changes_requested');
-    state = ok(saveFile(state, pid, 'u-seeta', 'frontend/index.html', '<p>@shared PROJECT_NAME</p>')).state;
+    state = ok(saveFile(state, pid, 'u-seeta', 'home/index.html', '<p>@shared PROJECT_NAME</p>')).state;
     state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
     state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
     expect(taskOf(state, 'u-seeta').review?.state).toBe('ready');
@@ -130,7 +130,7 @@ describe('merge review (PRD F6, acceptance 9)', () => {
     state = ok(acceptTaskMerge(state, pid, 'u-ram', id)).state;
     expect(taskOf(state, 'u-seeta').review?.state).toBe('accepted');
     // A teammate edit inside the merged folder reopens the review.
-    state = ok(saveFile(state, pid, 'u-seeta', 'frontend/app.ts', 'export const y = 2;')).state;
+    state = ok(saveFile(state, pid, 'u-seeta', 'home/app.ts', 'export const y = 2;')).state;
     expect(taskOf(state, 'u-seeta').review?.state).toBe('submitted');
     // Re-merge, then a contract edit reopens it too (the check depended on the contract).
     state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
@@ -144,14 +144,14 @@ describe('merge review (PRD F6, acceptance 9)', () => {
   it('acceptance stores an immutable snapshot of the folder as merged', () => {
     let { state, pid, taskOf } = setup();
     const id = taskOf(state, 'u-seeta').id;
-    state = ok(saveFile(state, pid, 'u-seeta', 'frontend/index.html', '<p>@shared PROJECT_NAME</p>')).state;
+    state = ok(saveFile(state, pid, 'u-seeta', 'home/index.html', '<p>@shared PROJECT_NAME</p>')).state;
     state = ok(setTaskStatus(state, pid, 'u-seeta', id, 'done')).state;
     state = ok(submitTaskForReview(state, pid, 'u-seeta', id)).state;
     state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
     state = ok(acceptTaskMerge(state, pid, 'u-ram', id)).state;
-    expect(taskOf(state, 'u-seeta').review?.snapshot?.['frontend/index.html']).toBe('<p>@shared PROJECT_NAME</p>');
+    expect(taskOf(state, 'u-seeta').review?.snapshot?.['home/index.html']).toBe('<p>@shared PROJECT_NAME</p>');
     // A later edit reopens the review; the old snapshot no longer stands as merged state.
-    state = ok(saveFile(state, pid, 'u-seeta', 'frontend/index.html', '<p>changed</p>')).state;
+    state = ok(saveFile(state, pid, 'u-seeta', 'home/index.html', '<p>changed</p>')).state;
     expect(taskOf(state, 'u-seeta').review?.state).toBe('submitted');
     expect(taskOf(state, 'u-seeta').review?.snapshot).toBeUndefined();
   });
