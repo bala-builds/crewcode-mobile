@@ -1,7 +1,7 @@
 // HTTP plumbing shared by the Vercel function files in api/. Kept tiny and
 // dependency-free: no @vercel/node types, structural req/res only.
 import { authFromEnv, type FetchLike } from './auth';
-import { InstallationTokens } from './github-app';
+import { InstallationTokens, resolvePrivateKeyPem } from './github-app';
 import { githubAuthStore } from './github-storage';
 import type { ServerlessDeps } from './serverless';
 
@@ -47,7 +47,8 @@ export function readJsonBody(req: ReqLike): Promise<{ ok: true; input: { as: str
 /**
  * Deployment deps from environment. Secrets arrive only as env vars populated
  * from the vault: CREWCODE_GITHUB_CLIENT_ID/SECRET (OAuth), CREWCODE_GITHUB_APP_ID,
- * CREWCODE_GITHUB_APP_PRIVATE_KEY_B64, CREWCODE_GITHUB_APP_INSTALLATION_ID,
+ * CREWCODE_GITHUB_APP_PRIVATE_KEY (raw PEM) or CREWCODE_GITHUB_APP_PRIVATE_KEY_B64,
+ * CREWCODE_GITHUB_APP_INSTALLATION_ID,
  * CREWCODE_DATA_REPO, CREWCODE_SESSION_SECRET, optional CREWCODE_APP_URL.
  */
 export async function envDeps(env: Record<string, string | undefined>): Promise<ServerlessDeps> {
@@ -56,12 +57,11 @@ export async function envDeps(env: Record<string, string | undefined>): Promise<
   const sessionSecret = env.CREWCODE_SESSION_SECRET?.trim() ?? '';
   const appId = env.CREWCODE_GITHUB_APP_ID?.trim();
   const installId = env.CREWCODE_GITHUB_APP_INSTALLATION_ID?.trim();
-  const keyB64 = env.CREWCODE_GITHUB_APP_PRIVATE_KEY_B64?.trim();
+  const pem = resolvePrivateKeyPem(env);
   const repo = env.CREWCODE_DATA_REPO?.trim();
   let stateRepo: ServerlessDeps['stateRepo'] = null;
   let token = '';
-  if (appId && installId && keyB64 && repo) {
-    const pem = Buffer.from(keyB64, 'base64').toString('utf8');
+  if (appId && installId && pem && repo) {
     const tokens = new InstallationTokens(appId, installId, pem, fetchImpl as never);
     token = await tokens.token();
     stateRepo = { repo, token };
