@@ -73,6 +73,8 @@ export function defaultContract(projectName: string, folders: { folder: string; 
     'Defined once here, not rebuilt per feature: session shape (SESSION), app routes (ROUTES),',
     'shared styles (THEME_COLOR), API base (API_BASE), project name (PROJECT_NAME).',
     'Features reference these; the owner owns this file and the shared app shell.',
+    'Shared foundation code (API client, session helpers, theme) lives in shared/ when it exists:',
+    'shared/ is written by the owner only and is never a task folder.',
     '',
     '## Folder ownership',
     ...folders.map((f) => `- ${f.folder} : ${f.owner}`),
