@@ -50,6 +50,23 @@ describe('access rules with dummy identities', () => {
     expect(good.state.projects[0].files['frontend/index.html']).toBe('<p>hi</p>');
     expect(state.projects[0].files['frontend/index.html']).toBeUndefined();
   });
+  it('saveFile creates a new file inside the assignee folder; outside paths refused; blind re-create conflicts', () => {
+    const created = ok(saveFile(state, pid, 'u-seeta', 'frontend/styles.css', 'body{}'));
+    const pv = created.state.projects[0];
+    expect(pv.files['frontend/styles.css']).toBe('body{}');
+    expect(pv.fileRevs['frontend/styles.css']).toBe(1);
+    expect(state.projects[0].files['frontend/styles.css']).toBeUndefined(); // original state untouched
+    // outside the folder, root files, and path tricks are still refused for creation
+    expect(saveFile(state, pid, 'u-seeta', 'backend/new.ts', 'x').ok).toBe(false);
+    expect(saveFile(state, pid, 'u-seeta', 'PRD.md', 'x').ok).toBe(false);
+    expect(saveFile(state, pid, 'u-seeta', 'frontend/../backend/x.ts', 'x').ok).toBe(false);
+    // baseRev 0 as "must not exist": once the file exists, a blind create conflicts instead of overwriting
+    expect(saveFile(created.state, pid, 'u-seeta', 'frontend/styles.css', 'other', 0).ok).toBe(false);
+    expect(created.state.projects[0].files['frontend/styles.css']).toBe('body{}');
+    // the owner can create anywhere, including a folder with no files yet
+    const ownerMade = ok(saveFile(state, pid, 'u-ram', 'docs/notes.md', 'hi'));
+    expect(ownerMade.state.projects[0].files['docs/notes.md']).toBe('hi');
+  });
   it('teammate cannot prompt in or build another teammate\'s task', () => {
     expect(postPrompt(state, pid, 'u-seeta', 'hello', hanumaTask.id).ok).toBe(false);
     expect(runBuild(state, pid, 'u-seeta', hanumaTask.id).ok).toBe(false);
