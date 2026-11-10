@@ -3,7 +3,7 @@
 // sessions), the request handlers, and cold-start semantics across instances.
 import { describe, it, expect } from 'vitest';
 import crypto from 'node:crypto';
-import { appJwt, InstallationTokens } from '../server/github-app';
+import { appJwt, InstallationTokens, resolvePrivateKeyPem } from '../server/github-app';
 import { readContents, writeContents, githubAuthStore, runServerlessOp } from '../server/github-storage';
 import { issueSignedState, verifySignedState, consumeStateDurable, createSessionDurable, getSessionDurable, destroySessionDurable, type AuthStore, type AuthData } from '../server/durable-auth';
 import { authStatus, startSignIn, finishSignIn, logout, apiPost, signedStateFromCookie, type ServerlessDeps } from '../server/serverless';
@@ -82,6 +82,17 @@ describe('GitHub App auth', () => {
     expect(calls[0].auth).toMatch(/^Bearer .+\..+\..+$/);
     const boom: F = async () => ({ ok: false, status: 500, json: async () => ({}) });
     await expect(new InstallationTokens('1', '2', pem, boom as never).token()).rejects.toThrow('installation token');
+  });
+
+  it('resolves the app private key from raw PEM, escaped-newline PEM, or base64 env forms', () => {
+    const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const pem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString().trim();
+    expect(resolvePrivateKeyPem({ CREWCODE_GITHUB_APP_PRIVATE_KEY: pem })).toBe(pem);
+    expect(resolvePrivateKeyPem({ CREWCODE_GITHUB_APP_PRIVATE_KEY: pem.replace(/\n/g, '\\n') })).toBe(pem);
+    expect(resolvePrivateKeyPem({ CREWCODE_GITHUB_APP_PRIVATE_KEY_B64: Buffer.from(pem, 'utf8').toString('base64') })).toBe(pem);
+    expect(resolvePrivateKeyPem({})).toBeNull();
+    // A resolved PEM must actually sign (not just string-match).
+    expect(appJwt('1', resolvePrivateKeyPem({ CREWCODE_GITHUB_APP_PRIVATE_KEY: pem })!).split('.')).toHaveLength(3);
   });
 });
 
