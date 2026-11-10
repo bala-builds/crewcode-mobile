@@ -14,7 +14,7 @@ Phase numbers follow the private phase plan; names here describe what each area 
 | Merge (Ph 6, F6) | Accepted work is copied into main/<folder>/; owner-only tree; owner edits to a merged copy block the next merge until explicitly overwritten; staleness and mismatch rules still bind | Met (local) | tests/merge-main.test.ts, review.test.ts; shots 27/27b |
 | Build (Ph 3-4) | Teammate runs a build and files land only in their folder | Demo (generated placeholder files) | simulateBuild |
 | Chat UI | Owner and teammate chat, error with retry, code button | Demo | docs/screenshots |
-| Skills / MCP (Ph 4) | Search, add, owner approval | Demo (placeholder catalog, nothing installed) | src/core/skills.ts |
+| Skills / MCP (Ph 4) | Search, add, owner approval | Real-item catalog (named tools mapped to sources; local tools run, external items noted not runnable) | src/core/skills.ts |
 | Preview | Real web-file runtime: the actual file runs with scripts in an opaque-origin iframe; edited code is what the preview shows; script execution and parent/storage denial proven in real Chrome | Met (web output only; network not blocked; not a secure untrusted-code runtime) | tests/ui.test.tsx preview checks, shot 25 (script probe markers) |
 | Providers (Ph 5-6) | Real provider calls with an own key | Met for own keys: adapters for Gemini, NVIDIA, xAI Grok, Groq, Claude, GPT call official endpoints from the device with the memory-only key; full build/plan flows tested against a fake fetch (scope refusal, stop-discard, error mapping). Owner-model real use stays gated on server-side key storage. **No live call made.** | src/core/llm.ts, src/core/providers.ts, tests/llm.test.ts, tests/realai.test.ts, ui.test.tsx; shot 28 |
 | Key handling | Keys memory-only, masked, never saved | Met in the client prototype; server-side key use not built | src/core/providers.ts |
@@ -30,7 +30,7 @@ Do not deploy this publicly before authentication and a hosted server exist.
 `tests/e2e.test.ts` runs create project, invite code, wrong code refused, two teammates join, AI plan, build, edit own folder, refused outside folder, teammate view hides other folders, revoke code, remove member. It runs through the server-side API with test identities.
 
 Counts as working: team code lifecycle, joining, folder isolation, per-user redaction, saves, removal.
-Does **not** count as working: task planning and builds (rule-based simulation), any real AI call, and authentication (excluded). The preview genuinely runs web files; the skills/MCP catalog content is placeholder. The phone UI is wired to the local API. A real Chrome owner/teammate journey through HttpClient, Vite proxy and the server binary passed on 10 Nov (scripts/browser-e2e.mjs, 47 observed HTTP requests including iframe probes). Real-device tap-through remains untested.
+Does **not** count as working: task planning and builds (rule-based simulation), any real AI call, and authentication (excluded). The preview genuinely runs web files; the skills/MCP catalog maps named tools to real sources. The phone UI is wired to the local API. A real Chrome owner/teammate journey through HttpClient, Vite proxy and the server binary passed on 10 Nov (scripts/browser-e2e.mjs, 47 observed HTTP requests including iframe probes). Real-device tap-through remains untested.
 
 
 ## Local integration and hardening, 10 Nov
