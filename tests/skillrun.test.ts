@@ -27,14 +27,14 @@ describe('Phase 7: two tools install, run within scope, and can be removed', () 
     }
   });
 
-  it('cloudflare-security scans only in-scope files and masks findings', () => {
+  it('secret-scan scans only in-scope files and masks findings', () => {
     const { s, p } = setup();
-    let st = addSkill(s, p.id, 'u-ram', 'cloudflare-security');
+    let st = addSkill(s, p.id, 'u-ram', 'secret-scan');
     if (!st.ok) throw new Error(st.error);
     const KEY = 'gsk_AbCdEfGhIjKlMnOpQrStUvWx';
     const w = saveFile(st.state, p.id, 'u-seeta', 'frontend/config.ts', `const k = '${KEY}';\n`);
     if (!w.ok) throw new Error(w.error);
-    const run = runSkill(w.state, p.id, 'u-seeta', 'cloudflare-security', 'frontend/config.ts');
+    const run = runSkill(w.state, p.id, 'u-seeta', 'secret-scan', 'frontend/config.ts');
     expect(run.ok).toBe(true);
     if (run.ok) {
       expect(run.output).toContain('possible secret');
@@ -79,9 +79,9 @@ describe('Phase 7: two tools install, run within scope, and can be removed', () 
 
   it('items declaring capabilities this build lacks are refused with the reason', () => {
     const { s, p } = setup();
-    let st = addSkill(s, p.id, 'u-ram', 'claude-design'); // declares write_scope
+    let st = addSkill(s, p.id, 'u-ram', 'frontend-design'); // declares write_scope
     if (!st.ok) throw new Error(st.error);
-    const run = runSkill(st.state, p.id, 'u-ram', 'claude-design', 'PRD.md');
+    const run = runSkill(st.state, p.id, 'u-ram', 'frontend-design', 'PRD.md');
     expect(run.ok).toBe(false);
     if (!run.ok) {
       expect(run.error).toContain('capabilities');
