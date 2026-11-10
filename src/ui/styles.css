@@ -111,3 +111,20 @@ iframe { width: 100%; height: 55dvh; border: 1px solid var(--line); border-radiu
 .tk-str { color: #4D7C0F; }
 .tk-com { color: #8A8A85; font-style: italic; }
 .tk-num { color: #9A3412; }
+
+/* Code workspace: hierarchical explorer, open-file tabs, change history. */
+.ftree { border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 8px; display: block; overflow-x: visible; }
+.ftree details { margin: 2px 0; }
+.ftree summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 4px 2px; }
+.frow { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; border: 0; border-radius: 8px; background: none; min-height: 34px; padding: 0 8px 0 18px; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.frow.rootfile { padding-left: 8px; }
+.frow.on { background: var(--bg); font-weight: 700; box-shadow: inset 3px 0 0 var(--accent); }
+.fdot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); display: inline-block; flex: none; }
+.ftabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 6px; }
+.ftab { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; background: var(--card); flex: none; }
+.ftab.on { background: var(--accent); border-color: var(--accent); }
+.ftab.on button { color: var(--accent-ink); }
+.ftab button { border: 0; background: none; min-height: 34px; padding: 0 10px; font-size: 13px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.ftab button.fx { padding: 0 6px 0 2px; font-weight: 700; }
+.changes { margin-top: 12px; }
+.changes summary { cursor: pointer; font-weight: 600; font-size: 14px; }
