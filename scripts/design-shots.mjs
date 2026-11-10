@@ -38,5 +38,17 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes('Habit Tracker'), { timeout: 30000 });
   await sleep(1000);
   await page.screenshot({ path: OUT + '/60c-mobile-workspace.png' });
+  // Mobile: all seven tabs, then the Overview sheet open, in-sheet navigation, and closed state.
+  for (const t of (process.env.ONLY_OVERVIEW ? [] : ['Code', 'Preview', 'Tasks', 'Files', 'Team', 'Settings', 'Chat'])) {
+    await page.evaluate((l) => { [...document.querySelectorAll('[role=tab]')].find((b) => b.textContent.trim() === l)?.click(); }, t);
+    await sleep(700);
+    await page.screenshot({ path: OUT + '/60m-mobile-tab-' + t.toLowerCase() + '.png' });
+  }
+  await page.evaluate(() => { [...document.querySelectorAll('.topbar button')].find((b) => b.textContent.trim() === 'Overview')?.click(); });
+  await sleep(700);
+  await page.screenshot({ path: OUT + '/60n-mobile-overview-open.png' });
+  await page.evaluate(() => { [...document.querySelectorAll('.sheet button')].find((b) => b.textContent.trim() === 'View all')?.click(); });
+  await sleep(700);
+  await page.screenshot({ path: OUT + '/60o-mobile-overview-nav-tasks.png' });
   console.log('PASS design shots');
 } finally { if (browser) await browser.close(); srv.kill(); vite.kill(); }
