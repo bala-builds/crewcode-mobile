@@ -19,7 +19,7 @@ import { HttpClient, op, type ClientData, type ProjectView } from './client';
 type Screen =
   | { name: 'welcome' } | { name: 'home' } | { name: 'create' } | { name: 'invite'; pid: string }
   | { name: 'join' } | { name: 'ai'; pid: string } | { name: 'workspace'; pid: string };
-type Tab = 'chat' | 'code' | 'preview' | 'tasks';
+type Tab = 'chat' | 'code' | 'preview' | 'tasks' | 'files' | 'team' | 'settings';
 type Me = { id: string; name: string };
 type UserInfo = { id: string; name: string };
 
@@ -57,6 +57,7 @@ function LeftRail({ me, projects, currentPid, go, enter, signOut }: { me: Me; pr
   return (
     <aside className="rail" aria-label="Projects navigation">
       <div className="rail-brand">CrewCode</div>
+      <button className="rail-nav" onClick={() => go({ name: 'home' })}>Home</button>
       <button className="rail-nav" onClick={() => go({ name: 'home' })}>Projects</button>
       <button className="rail-nav" onClick={() => go({ name: 'create' })}>+ Create project</button>
       <button className="rail-nav" onClick={() => go({ name: 'join' })}>+ Join project</button>
@@ -471,7 +472,10 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
         onCancel={(id: string) => actOp('cancelTaskRun', { projectId: pid, taskId: id }, pid)} openCode={(f: string) => { setOpen(f); setTab('code'); }} err={err} />}
       {tab === 'code' && <CodeView p={p} open={open} setOpen={setOpen} editKey={editKey} onSave={(path, c, rev) => actOp('saveFile', { projectId: pid, path, content: c, baseRev: rev }, pid)} reload={() => load()} err={err} clearErr={clearErr} />}
       {tab === 'preview' && <PreviewView p={p} />}
-      {tab === 'tasks' && <TasksView p={p} nameOf={nameOf} onStatus={(id, s) => actOp('setTaskStatus', { projectId: pid, taskId: id, status: s }, pid)} actOp={(n, a) => actOp(n, a, pid)} err={err} />}
+      {tab === 'tasks' && <TasksView p={p} user={me.id} nameOf={nameOf} onStatus={(id, s) => actOp('setTaskStatus', { projectId: pid, taskId: id, status: s }, pid)} actOp={(n, a) => actOp(n, a, pid)} err={err} />}
+      {tab === 'files' && <FilesView p={p} />}
+      {tab === 'team' && <TeamSheet p={p} user={me.id} nameOf={nameOf} actOp={(n, a) => actOp(n, a, pid)} close={() => setTab('chat')} err={err} backupJson={backupJson} setBackupJson={setBackupJson} inline />}
+      {tab === 'settings' && <SettingsView p={p} me={me} go={go} actOp={(n, a) => actOp(n, a, pid)} />}
       {tab === 'chat' && (
         <div className="composer">
           {suggest && (
@@ -502,7 +506,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
         </div>
       )}
       <div className="tabs" role="tablist">
-        {(['chat', 'code', 'preview', 'tasks'] as Tab[]).map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); clearErr(); }}>{t[0].toUpperCase() + t.slice(1)}</button>)}
+        {(['chat', 'code', 'preview', 'tasks', 'files', 'team', 'settings'] as Tab[]).map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => { setTab(t); clearErr(); }}>{t[0].toUpperCase() + t.slice(1)}</button>)}
       </div>
       {sheet === 'team' && <TeamSheet p={p} user={me.id} nameOf={nameOf} actOp={(n, a) => actOp(n, a, pid)} close={() => setSheet(null)} err={err} backupJson={backupJson} setBackupJson={setBackupJson} />}
       {sheet === 'skills' && <SkillsSheet p={p} user={me.id} q={q} setQ={setQ} actOp={(n, a) => actOp(n, a, pid)} pid={pid} close={() => setSheet(null)} err={err} />}
@@ -575,8 +579,10 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, real
 }
 
 function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: { p: ProjectView; open: string | null; setOpen: (f: string | null) => void; editKey: (path: string) => string; onSave: (path: string, c: string, rev: number) => Promise<any>; reload: () => Promise<unknown>; err: string | null; clearErr: () => void }) {
-  const files = Object.keys(p.files).sort();
-  const path = open && files.includes(open) ? open : files.find((f) => canWriteView(p, f)) ?? files[0] ?? null;
+  const [fq, setFq] = useState('');
+  const filesAll = Object.keys(p.files).sort();
+  const files = fq.trim() ? filesAll.filter((f) => f.toLowerCase().includes(fq.trim().toLowerCase())) : filesAll;
+  const path = open && filesAll.includes(open) ? open : filesAll.find((f) => canWriteView(p, f)) ?? filesAll[0] ?? null;
   const [text, setText] = useState(''); const [dirty, setDirty] = useState(false); const [rev, setRev] = useState(0);
   const [conflict, setConflict] = useState<{ mine: string } | null>(null);
   const [adding, setAdding] = useState(false); const [newName, setNewName] = useState(''); const [newErr, setNewErr] = useState<string | null>(null);
@@ -594,6 +600,7 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
   };
   const newFileRow = roots.length > 0 && (
     <div style={{ marginBottom: 8 }}>
+      <input aria-label="Search files" value={fq} onChange={(e) => setFq(e.target.value)} placeholder="Search files" style={{ marginBottom: 8 }} />
       {!adding && <button className="small" onClick={() => { setAdding(true); setNewName(roots[0] ?? ''); setNewErr(null); }}>New file</button>}
       {adding && (
         <div className="row wrap">
@@ -658,6 +665,7 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
 }
 
 function PreviewView({ p }: { p: ProjectView }) {
+  const [nonce, setNonce] = useState(0);
   const readable = Object.keys(p.files).filter((f) => f.endsWith('index.html')).sort();
   const [sel, setSel] = useState<string | null>(null); const path = sel && readable.includes(sel) ? sel : readable[0];
   const pageRef = useRef<HTMLIFrameElement>(null);
@@ -679,14 +687,22 @@ function PreviewView({ p }: { p: ProjectView }) {
   return (
     <div className="screen">
       <div className="note">Preview of {path}: the page runs with scripts on in an opaque-origin iframe - no access to the app or its storage.{apiSrc ? ' /api calls are answered by the feature api.ts running in a second sandbox: plain-JS route modules only - no packages, no database, no other languages.' : ' No api.ts next to it, so /api calls get nothing.'} Network is otherwise not blocked. Not a secure runtime for untrusted code.</div>
-      {readable.length > 1 && <div className="files">{readable.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => setSel(f)}>{f}</button>)}</div>}
-      <iframe title="Preview" sandbox="allow-scripts" srcDoc={buildPreviewDoc(p.files[path])} ref={pageRef} />
-      {apiSrc && <iframe title="Backend runtime" sandbox="allow-scripts" srcDoc={buildBackendDoc(apiSrc)} ref={beRef} style={{ display: 'none' }} />}
+      <div className="row wrap" style={{ alignItems: 'center' }}>
+        {readable.length > 1 && readable.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => setSel(f)}>{f}</button>)}
+        <button className="chip small" onClick={() => setNonce((n) => n + 1)}>Refresh</button>
+        <span className="muted">Runs the project's saved files, not a live deploy.</span>
+      </div>
+      <iframe key={'pg' + nonce} title="Preview" sandbox="allow-scripts" srcDoc={buildPreviewDoc(p.files[path])} ref={pageRef} />
+      {apiSrc && <iframe key={'be' + nonce} title="Backend runtime" sandbox="allow-scripts" srcDoc={buildBackendDoc(apiSrc)} ref={beRef} style={{ display: 'none' }} />}
     </div>
   );
 }
 
-function TasksView({ p, nameOf, onStatus, actOp, err }: { p: ProjectView; nameOf: (id: string) => string; onStatus: (id: string, s: TaskStatus) => void; actOp: (name: string, args: Record<string, unknown>) => Promise<any>; err: string | null }) {
+function TasksView({ p, user, nameOf, onStatus, actOp, err }: { p: ProjectView; user: string; nameOf: (id: string) => string; onStatus: (id: string, s: TaskStatus) => void; actOp: (name: string, args: Record<string, unknown>) => Promise<any>; err: string | null }) {
+  const [filter, setFilter] = useState<'all' | 'mine' | 'todo' | 'in_progress' | 'done'>('all');
+  const shown = p.tasks.filter((t) => filter === 'all' ? true : filter === 'mine' ? t.assigneeId === user : t.status === filter);
+  const doneCount = p.tasks.filter((t) => t.status === 'done').length;
+  const pct = p.tasks.length ? Math.round((doneCount / p.tasks.length) * 100) : 0;
   const [mergeConflict, setMergeConflict] = useState<string | null>(null);
   const merge = async (taskId: string, force = false) => {
     const r = await actOp('acceptTaskMerge', { projectId: p.id, taskId, force });
@@ -735,8 +751,20 @@ function TasksView({ p, nameOf, onStatus, actOp, err }: { p: ProjectView; nameOf
           })}
         </div>
       )}
+      {p.tasks.length > 0 && (
+        <div className="card">
+          <div className="row spread"><strong>Progress</strong><span className="muted">{doneCount} of {p.tasks.length} done - {pct}%</span></div>
+          <div className="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><div style={{ width: pct + '%' }} /></div>
+        </div>
+      )}
+      <div className="row wrap" role="group" aria-label="Task filters">
+        {([['all', 'All'], ['mine', 'Mine'], ['todo', 'To do'], ['in_progress', 'In progress'], ['done', 'Done']] as const).map(([k, label]) => (
+          <button key={k} className={'chip small' + (filter === k ? ' on' : '')} onClick={() => setFilter(k)}>{label}</button>
+        ))}
+      </div>
       {p.tasks.length === 0 && <div className="empty">No tasks yet.</div>}
-      {p.tasks.map((t) => (
+      {p.tasks.length > 0 && shown.length === 0 && <div className="empty">No tasks match this filter.</div>}
+      {shown.map((t) => (
         <div key={t.id} className="card">
           <div className="row spread"><strong>{t.title}</strong><span className="tag">{t.status.replace('_', ' ')}</span></div>
           <p className="muted">{t.detail}</p>
@@ -753,11 +781,11 @@ function TasksView({ p, nameOf, onStatus, actOp, err }: { p: ProjectView; nameOf
   );
 }
 
-function TeamSheet({ p, user, nameOf, actOp, close, err, backupJson, setBackupJson }: { p: ProjectView; user: string; nameOf: (id: string) => string; actOp: (name: string, args: Record<string, unknown>) => Promise<any>; close: () => void; err: string | null; backupJson: string; setBackupJson: (v: string) => void }) {
+function TeamSheet({ p, user, nameOf, actOp, close, err, backupJson, setBackupJson, inline }: { p: ProjectView; user: string; nameOf: (id: string) => string; actOp: (name: string, args: Record<string, unknown>) => Promise<any>; close: () => void; err: string | null; backupJson: string; setBackupJson: (v: string) => void; inline?: boolean }) {
   const owner = p.role === 'owner';
-  return (
-    <div className="sheet-bg" onClick={close}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Team">
-      <div className="row spread"><h2 style={{ margin: 0 }}>Team</h2><button className="small" onClick={close}>Close</button></div>
+  const inner = (
+    <>
+      <div className="row spread"><h2 style={{ margin: 0 }}>Team</h2>{!inline && <button className="small" onClick={close}>Close</button>}</div>
       <Err text={err} />
       {owner && <div className="card"><div className="muted">Team code{p.teamRevoked ? ' (turned off)' : ''}</div><div className="row spread"><div className="code">{p.teamCode}</div><CopyBtn text={p.teamCode ?? ''} /></div>
         {!p.teamRevoked && (p.teamExpiresAt == null
@@ -803,7 +831,55 @@ function TeamSheet({ p, user, nameOf, actOp, close, err, backupJson, setBackupJs
       </div>}
       {owner && <div className="card"><div className="row spread"><div className="grow"><strong>Share my AI model</strong><div className="muted">Teammates can use it without seeing the key.</div></div>
         <button className={'chip' + (p.ownerKeySharing ? ' on' : '')} aria-pressed={p.ownerKeySharing} onClick={() => actOp('setOwnerKeySharing', { projectId: p.id, on: !p.ownerKeySharing })}>{p.ownerKeySharing ? 'On' : 'Off'}</button></div></div>}
-    </div></div>
+    </>
+  );
+  if (inline) return <div className="screen">{inner}</div>;
+  return <div className="sheet-bg" onClick={close}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Team">{inner}</div></div>;
+}
+
+function FilesView({ p }: { p: ProjectView }) {
+  const ROOT_DOCS = ['PRD.md', 'AGENT_INSTRUCTIONS.md', 'CONTRACT.md'];
+  const paths = Object.keys(p.files).sort((a, b) => (ROOT_DOCS.includes(b) ? 1 : 0) - (ROOT_DOCS.includes(a) ? 1 : 0) || a.localeCompare(b));
+  const [sel, setSel] = useState<string | null>(null);
+  const cur = sel && p.files[sel] != null ? sel : paths[0];
+  if (!cur) return <div className="screen"><div className="empty">No files yet.</div></div>;
+  return (
+    <div className="screen">
+      <div className="muted">Project documents and source files. Edit them in the Code tab.</div>
+      <div className="files">{paths.map((f) => (
+        <button key={f} className={'chip small' + (f === cur ? ' on' : '')} onClick={() => setSel(f)}>{ROOT_DOCS.includes(f) ? '[doc] ' : ''}{f}</button>
+      ))}</div>
+      <div className="card"><div className="row spread"><strong style={{ overflowWrap: 'anywhere' }}>{cur}</strong><span className="muted">{p.files[cur].split('\n').length} lines</span></div>
+        <pre className="docview">{p.files[cur]}</pre></div>
+    </div>
+  );
+}
+
+function SettingsView({ p, me, go, actOp }: { p: ProjectView; me: Me; go: (s: Screen) => void; actOp: (n: string, a: Record<string, unknown>) => Promise<any> }) {
+  const owner = p.role === 'owner';
+  const mine = p.members.find((m) => m.userId === me.id);
+  const ai = mine?.ai;
+  return (
+    <div className="screen">
+      <h2>Settings</h2>
+      <div className="card">
+        <strong>Project</strong>
+        <div className="muted" style={{ marginTop: 6 }}>{p.name} - your role: {p.role}</div>
+        <div className="muted">{p.summary && p.summary !== p.name ? p.summary : 'No description yet'}</div>
+      </div>
+      <div className="card">
+        <strong>AI access</strong>
+        <div className="muted" style={{ marginTop: 6 }}>{ai?.kind === 'own' ? `Your ${ai.provider} key` : ai?.kind === 'owner' ? "Owner's model" : 'None - simulated builds until a key is added'}</div>
+        <div className="row" style={{ marginTop: 8 }}><button className="small" onClick={() => go({ name: 'ai', pid: p.id })}>Configure AI access</button></div>
+        <div className="muted" style={{ marginTop: 6 }}>Provider keys are stored only in this browser, never sent to teammates.</div>
+      </div>
+      {owner && <div className="card"><div className="row spread"><div className="grow"><strong>Share my AI model</strong><div className="muted">Teammates can use it without seeing the key.</div></div>
+        <button className={'chip' + (p.ownerKeySharing ? ' on' : '')} aria-pressed={p.ownerKeySharing} onClick={() => actOp('setOwnerKeySharing', { projectId: p.id, on: !p.ownerKeySharing })}>{p.ownerKeySharing ? 'On' : 'Off'}</button></div></div>}
+      <div className="card">
+        <strong>Sign-in</strong>
+        <div className="muted" style={{ marginTop: 6 }}>Test identities only right now. Real GitHub sign-in is being connected (app registered, not yet wired in).</div>
+      </div>
+    </div>
   );
 }
 
@@ -850,4 +926,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-            }
+                                         }
