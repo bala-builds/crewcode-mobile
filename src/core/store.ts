@@ -332,6 +332,14 @@ export function startTaskRun(state: AppState, projectId: string, userId: string,
  * Applies a finished run. If the task was stopped while the provider was still working,
  * the result is discarded: no files change, no build message is posted. Late writes never land.
  */
+/** Simple line diff: trim the common prefix/suffix, count what changed in between. */
+function lineDiff(before: string, after: string): { added: number; removed: number } {
+  const a = before === '' ? [] : before.split('\n'); const b = after === '' ? [] : after.split('\n');
+  let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  let j = 0; while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j++;
+  return { removed: a.length - i - j, added: b.length - i - j };
+}
+
 export function applyTaskRun(
   state: AppState, projectId: string, taskId: string,
   result: { ok: true; message: string; files: Record<string, string> } | { ok: false; error: string },
@@ -350,6 +358,7 @@ export function applyTaskRun(
     return { ok: true, state: next };
   }
   const written: string[] = [];
+  const diff: Record<string, { added: number; removed: number }> = {};
   for (const [path, content] of Object.entries(result.files)) {
     // The AI acts for the task's assignee. It is held to the same rule as a person.
     if (!canAccess(p, t.assigneeId, 'write', path)) {
@@ -357,13 +366,15 @@ export function applyTaskRun(
       push({ authorId: 'ai', taskId, kind: 'ai_error', text: `Refused: ${path} is outside the task folder.` });
       return { ok: true, state: next };
     }
+    const before = p.files[path];
+    if (before !== content) diff[path] = lineDiff(before ?? '', content);
     p.files[path] = content; written.push(path);
     if (!p.fileRevs) p.fileRevs = {};
     p.fileRevs[path] = (p.fileRevs[path] ?? 0) + 1;
     reopenAcceptedReviews(p, path);
   }
   t.status = 'in_progress'; t.run = 'idle'; delete t.runError;
-  push({ authorId: 'ai', taskId, kind: 'ai_build', simulated: opts.simulated !== false, text: (opts.simulated === false ? '' : 'Simulated build. ') + result.message, files: written });
+  push({ authorId: 'ai', taskId, kind: 'ai_build', simulated: opts.simulated !== false, text: (opts.simulated === false ? '' : 'Simulated build. ') + result.message, files: written, diff });
   return { ok: true, state: next };
 }
 
@@ -410,7 +421,12 @@ export function setTaskDetails(state: AppState, projectId: string, userId: strin
       t.priority = d.priority ?? undefined;
     }
     if (d.due !== undefined) {
-      if (d.due !== null && !/^\d{4}-\d{2}-\d{2}$/.test(d.due)) return 'Due date must be YYYY-MM-DD.';
+      if (d.due !== null) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d.due);
+        if (!m) return 'Due date must be YYYY-MM-DD.';
+        const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+        if (dt.getUTCFullYear() !== +m[1] || dt.getUTCMonth() !== +m[2] - 1 || dt.getUTCDate() !== +m[3]) return 'Due date must be a real calendar date.';
+      }
       t.due = d.due ?? undefined;
     }
     if (d.acceptance !== undefined) t.acceptance = d.acceptance?.trim() || undefined;
