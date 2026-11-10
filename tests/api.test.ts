@@ -5,6 +5,7 @@ const setup = () => {
   const api = new Api();
   const pid = (api.call({ as: 'u-ram', op: 'listProjects' }) as any).data[0].id as string;
   api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
+  api.call({ as: 'u-ram', op: 'confirmPlanning', args: { projectId: pid, accept: true } });
   return { api, pid };
 };
 
