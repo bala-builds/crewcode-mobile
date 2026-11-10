@@ -26,6 +26,9 @@ try {
   await clickTab('Team', '60f-desktop-team.png');
   await clickTab('Settings', '60g-desktop-settings.png');
   await clickTab('Chat', '60h-desktop-chat.png');
+  await page.evaluate(() => { [...document.querySelectorAll('button.rail-nav')].find((b) => b.textContent.trim() === 'Discover')?.click(); });
+  await sleep(900);
+  await page.screenshot({ path: OUT + '/60i-desktop-discover.png' });
   await page.evaluate(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Projects')?.click(); });
   await sleep(800);
   await page.screenshot({ path: OUT + '/60b-desktop-home.png' });
