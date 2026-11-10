@@ -130,13 +130,26 @@ describe('feature-based decomposition (deterministic fallback)', () => {
     expect(validatePlan(plan, team).ok).toBe(true);
   });
 
-  it('dependency hints in a bullet are surfaced in the task detail, not enforced (numbered CLI tool)', () => {
+  it('dependency hints become structured, validated deps (numbered CLI tool)', () => {
     const prd = '# cfg-tool\n\n1. Parse: read and validate config files\n2. Report: render the output, after Parse\n';
     const plan = planTasks(proj(prd), users2);
     const report = plan.find((t) => t.folder === 'report/')!;
     expect(report.detail).toContain('Depends on: Parse');
-    expect(report.detail).toContain('not enforced');
+    expect(report.deps).toEqual(['parse/']);
     expect(validatePlan(plan, team).ok).toBe(true);
+  });
+
+  it('invalid structured deps reject the plan: unknown folder, self-dependency, cycles', () => {
+    const base = [
+      { title: 'A', detail: 'a', assigneeId: 'u-seeta', folder: 'a/' },
+      { title: 'B', detail: 'b', assigneeId: 'u-hanuma', folder: 'b/' },
+    ];
+    expect(validatePlan(base.map((t, i) => i === 0 ? { ...t, deps: ['nope/'] } : t), team).ok).toBe(false);
+    expect(validatePlan(base.map((t, i) => i === 0 ? { ...t, deps: ['a/'] } : t), team).ok).toBe(false);
+    const cyc = [{ ...base[0], deps: ['b/'] }, { ...base[1], deps: ['a/'] }];
+    expect(validatePlan(cyc, team).ok).toBe(false);
+    expect(validatePlan([{ ...base[0], deps: ['b/'] }, base[1]], team).ok).toBe(true);
+    expect(validatePlan(base.map((t, i) => i === 0 ? { ...t, folder: 'shared/' } : t), team).ok).toBe(false);
   });
 
   it('one feature per person when people match features; extra people get an owner-assigned folder', () => {
