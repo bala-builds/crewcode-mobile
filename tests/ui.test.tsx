@@ -229,6 +229,35 @@ describe('Phase 3 preview checks (web runtime)', () => {
     expect(text()).toContain('frontend/index.html');
     expect(text()).not.toContain('Preview of CONTRACT');
   });
+
+  it('teammate creates a new file inside their folder from the Code tab; outside-folder and existing paths are refused', async () => {
+    await rerenderWithHash('#demo=seeta'); // teammate with a built frontend/index.html
+    await clickTab('Code');
+    await click('New file');
+    const input = document.querySelector('input[aria-label="New file path"]') as HTMLInputElement;
+    expect(input.value).toBe('frontend/'); // prefilled with the teammate's folder
+    setVal(input, 'backend/sneaky.ts');
+    await click('Create');
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('inside your folder');
+    setVal(input, 'frontend/../backend/x.ts');
+    await click('Create');
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('plain relative path');
+    setVal(input, 'frontend/index.html');
+    await click('Create');
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('already exists');
+    setVal(input, 'frontend/styles.css');
+    await click('Create');
+    await flush();
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+    // the new file opens in the editor and is listed
+    expect(text()).toContain('frontend/styles.css');
+    const editor = document.querySelector('textarea.editor') as HTMLTextAreaElement;
+    expect(editor.readOnly).toBe(false);
+    setVal(editor, 'body { margin: 0; }');
+    await click('Save');
+    await flush();
+    expect(text()).not.toContain('Unsaved changes');
+  });
 });
 
 describe('Phase 1 teammate journey and restrictions', () => {
