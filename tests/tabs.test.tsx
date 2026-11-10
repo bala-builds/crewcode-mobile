@@ -260,4 +260,33 @@ describe('seven-tab workspace', () => {
     await flush();
     expect(document.querySelector('[role="dialog"][aria-label="Project overview"]')).toBeNull();
   });
+
+  it('task priority, due date and acceptance criteria are editable and persist', async () => {
+    await openSeed();
+    // Create real tasks through the simulated orchestration (seed starts with none).
+    setVal(document.querySelector('.composer textarea')!, 'build it');
+    await click('Send');
+    await click('Assign tasks (simulated)');
+    await click('Approve plan');
+    await clickTab('Tasks');
+    const prio = document.querySelector('select[aria-label^="Priority for "]') as HTMLSelectElement;
+    expect(prio).toBeTruthy();
+    act(() => { prio.value = 'high'; prio.dispatchEvent(new Event('change', { bubbles: true })); });
+    await flush();
+    const due = document.querySelector('input[aria-label^="Due date for "]') as HTMLInputElement;
+    setVal(due, '2026-12-01');
+    await flush();
+    const acc = document.querySelector('textarea[aria-label^="Acceptance criteria for "]') as HTMLTextAreaElement;
+    setVal(acc, 'Passes contract check');
+    act(() => { acc.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
+    await flush();
+    // Server state reflects all three.
+    const st = api.call({ as: 'u-ram', op: 'listProjects' } as any);
+    expect(st.ok).toBe(true);
+    if (!st.ok) return;
+    const t = (st.data as any)[0].tasks.find((x: any) => x.priority === 'high');
+    expect(t).toBeTruthy();
+    expect(t.due).toBe('2026-12-01');
+    expect(t.acceptance).toBe('Passes contract check');
+  });
 });
