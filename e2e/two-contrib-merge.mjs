@@ -66,47 +66,46 @@ try{
  for(let i=0;i<25;i++){ const q=await api({as:'u-ram',op:'getProject',args:{projectId:pid}}); seetaTask=q.tasks.find(t=>t.assigneeId==='u-seeta'); hanumaTask=q.tasks.find(t=>t.assigneeId==='u-hanuma'); if(seetaTask&&hanumaTask) break; await sleep(1000); }
  if(!seetaTask||!hanumaTask) throw Error('tasks not assigned to both teammates');
  console.log('TASKS', seetaTask.title,'|',seetaTask.folder,'//',hanumaTask.title,'|',hanumaTask.folder);
- // Seeta: simulated build, then overwrite frontend/index.html through the Code editor
+ // Seeta: simulated build (home/index.html + home/api.ts), overwrite home/index.html in the
+ // Code editor, then create the five fixture backend files in home/ via New file - all UI.
  await B.waitForFunction(()=>document.body.innerText.includes('Run simulated build'),{timeout:40000});
  await click(B,'Run simulated build');
- for(let i=0;i<30;i++){ const q=await api({as:'u-seeta',op:'getProject',args:{projectId:pid}}); if(q.files['frontend/index.html']) break; await sleep(1000); }
+ for(let i=0;i<30;i++){ const q=await api({as:'u-seeta',op:'getProject',args:{projectId:pid}}); if(q.files['home/index.html']) break; await sleep(1000); }
  await click(B,'Code');
- await B.waitForFunction(()=>[...document.querySelectorAll('button.chip')].some(b=>b.textContent.includes('frontend/index.html')),{timeout:15000});
- for(const h of await B.$$('button.chip')){ if(await h.evaluate(e=>e.textContent.includes('frontend/index.html'))){await h.click();break;} }
+ await shot(B,'34a-teammate-new-file-available.png');
+ await B.waitForFunction(()=>[...document.querySelectorAll('button.chip')].some(b=>b.textContent.includes('home/index.html')),{timeout:15000});
+ for(const h of await B.$$('button.chip')){ if(await h.evaluate(e=>e.textContent.includes('home/index.html'))){await h.click();break;} }
  await B.waitForSelector('textarea.editor',{timeout:10000});
  await setEditor(B,FRONTEND);
  await click(B,'Save');
  await B.waitForFunction(()=>!document.body.innerText.includes('Unsaved changes'),{timeout:10000});
+ for(const f of BACKEND_FILES){
+   const content=fs.readFileSync(FIX+'/backend/'+f,'utf8');
+   await click(B,'New file');
+   await typeReplace(B,'input[aria-label="New file path"]','home/'+f);
+   await click(B,'Create');
+   await B.waitForFunction((n)=>{const el=[...document.querySelectorAll('.row.spread strong')].find(e=>e.textContent===n);return !!el;},{timeout:10000},'home/'+f);
+   await B.waitForSelector('textarea.editor',{timeout:8000});
+   await setEditor(B,content);
+   await click(B,'Save');
+   await B.waitForFunction(()=>!document.body.innerText.includes('Unsaved changes'),{timeout:10000});
+   console.log('CREATED', 'home/'+f);
+ }
  await click(B,'Tasks'); await click(B,'done'); await sleep(600); await click(B,'Submit for merge');
  await B.waitForFunction(()=>document.body.innerText.includes('Sent for merge review'),{timeout:15000});
  console.log('SEETA-SUBMITTED', new Date().toISOString());
- // Hanuma: simulated build (backend/README.md), then the five backend files created one by
- // one through the Code tab's New file affordance and filled in the editor - all UI.
+ // Hanuma: simulated build only (settings/ full-stack placeholder), done, submit.
  await C.waitForFunction(()=>document.body.innerText.includes('Run simulated build'),{timeout:40000});
  await click(C,'Run simulated build');
- for(let i=0;i<30;i++){ const q=await api({as:'u-hanuma',op:'getProject',args:{projectId:pid}}); if(q.files['backend/README.md']) break; await sleep(1000); }
- await click(C,'Code');
- await shot(C,'34a-teammate-new-file-available.png');
- for(const f of BACKEND_FILES){
-   const content=fs.readFileSync(FIX+'/backend/'+f,'utf8');
-   await click(C,'New file');
-   await typeReplace(C,'input[aria-label="New file path"]','backend/'+f);
-   await click(C,'Create');
-   await C.waitForFunction((n)=>{const el=[...document.querySelectorAll('.row.spread strong')].find(e=>e.textContent===n);return !!el;},{timeout:10000},'backend/'+f);
-   await C.waitForSelector('textarea.editor',{timeout:8000});
-   await setEditor(C,content);
-   await click(C,'Save');
-   await C.waitForFunction(()=>!document.body.innerText.includes('Unsaved changes'),{timeout:10000});
-   console.log('CREATED', 'backend/'+f);
- }
+ for(let i=0;i<30;i++){ const q=await api({as:'u-hanuma',op:'getProject',args:{projectId:pid}}); if(q.files['settings/index.html']) break; await sleep(1000); }
  await click(C,'Tasks'); await click(C,'done'); await sleep(600); await click(C,'Submit for merge');
  await C.waitForFunction(()=>document.body.innerText.includes('Sent for merge review'),{timeout:15000});
  console.log('HANUMA-SUBMITTED', new Date().toISOString());
  // Owner: wait until BOTH submissions render, then screenshot (learned from shot 32b).
  await click(A,'Tasks');
- await A.waitForFunction(()=>{const t=document.body.innerText; return t.includes('frontend/')&&t.includes('backend/')&&(t.match(/submitted/g)||[]).length>=2;},{timeout:40000});
+ await A.waitForFunction(()=>{const t=document.body.innerText; return t.includes('home/')&&t.includes('settings/')&&(t.match(/submitted/g)||[]).length>=2;},{timeout:40000});
  await shot(A,'34b-owner-sees-both-submissions.png');
- for(const folder of ['frontend/','backend/']){
+ for(const folder of ['home/','settings/']){
    await click(A,'Run check');
    await A.waitForFunction(()=>document.body.innerText.includes('ready'),{timeout:15000});
    await click(A,'Merge into main');
@@ -117,21 +116,21 @@ try{
  // verify the physical main tree byte-matches the fixtures
  const proj=await api({as:'u-ram',op:'getProject',args:{projectId:pid}});
  const checks={};
- checks['main/frontend/index.html']=proj.files['main/frontend/index.html']===FRONTEND;
- for(const f of BACKEND_FILES) checks['main/backend/'+f]=proj.files['main/backend/'+f]===fs.readFileSync(FIX+'/backend/'+f,'utf8');
+ checks['main/home/index.html']=proj.files['main/home/index.html']===FRONTEND;
+ for(const f of BACKEND_FILES) checks['main/home/'+f]=proj.files['main/home/'+f]===fs.readFileSync(FIX+'/backend/'+f,'utf8');
  console.log('MAIN-TREE', JSON.stringify(checks));
  if(Object.values(checks).some(v=>!v)) throw Error('main tree mismatch');
  // combined runtime: extract merged main/, boot the merged backend, serve the merged
  // frontend with an /api proxy, and add a habit through the UI of the merged app
  fs.rmSync('/tmp/combined-main',{recursive:true,force:true});
  for(const [pth,c] of Object.entries(proj.files)) if(pth.startsWith('main/')){ const fp='/tmp/combined-main/'+pth.slice(5); fs.mkdirSync(path.dirname(fp),{recursive:true}); fs.writeFileSync(fp,c); }
- fs.symlinkSync(FIX+'/backend/node_modules','/tmp/combined-main/backend/node_modules');
- const be=spawn('node',['index.js'],{cwd:'/tmp/combined-main/backend',env:{...process.env,PORT:'4123'},stdio:'ignore'});
+ fs.symlinkSync(FIX+'/backend/node_modules','/tmp/combined-main/home/node_modules');
+ const be=spawn('node',['index.js'],{cwd:'/tmp/combined-main/home',env:{...process.env,PORT:'4123'},stdio:'ignore'});
  const fe=spawn('node',['-e',`
 const http=require('http'),fs=require('fs');
 http.createServer(async(req,res)=>{
  if(req.url.startsWith('/api/')){ const c=[]; req.on('data',x=>c.push(x)); req.on('end',async()=>{ const r=await fetch('http://127.0.0.1:4123'+req.url,{method:req.method,headers:{'content-type':'application/json'},body:req.method==='GET'?undefined:Buffer.concat(c)}); res.writeHead(r.status,{'content-type':'application/json'}); res.end(Buffer.from(await r.arrayBuffer())); }); return; }
- res.writeHead(200,{'content-type':'text/html'}); res.end(fs.readFileSync('/tmp/combined-main/frontend/index.html'));
+ res.writeHead(200,{'content-type':'text/html'}); res.end(fs.readFileSync('/tmp/combined-main/home/index.html'));
 }).listen(5201,'127.0.0.1');`],{stdio:'ignore'});
  await sleep(1200);
  const R=await (await bA.createBrowserContext()).newPage();
