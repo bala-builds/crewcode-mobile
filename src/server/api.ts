@@ -245,6 +245,7 @@ export class Api {
         const out = this.commit(r); return out.ok && r.ok ? { ok: true, data: { count: r.count ?? 0, discarded: !!r.discarded } } : out;
       }
       case 'setTaskStatus': return this.commit(S.setTaskStatus(st, args.projectId, u, args.taskId, args.status));
+      case 'setTaskDetails': return this.commit(S.setTaskDetails(st, args.projectId, u, args.taskId, { priority: args.priority, due: args.due, acceptance: args.acceptance }));
       case 'submitTaskForReview': return this.commit(S.submitTaskForReview(st, args.projectId, u, args.taskId));
       case 'runIntegrationReview': return this.commit(S.runIntegrationReview(st, args.projectId, u, args.taskId));
       case 'acceptTaskMerge': return this.commit(S.acceptTaskMerge(st, args.projectId, u, args.taskId, { force: !!args.force }));
