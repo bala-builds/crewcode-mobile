@@ -74,14 +74,19 @@ function LeftRail({ me, projects, currentPid, go, enter, signOut }: { me: Me; pr
   );
 }
 
-function RightRail({ p, me, nameOf }: { p: ProjectView; me: Me; nameOf: (id: string) => string }) {
+function RightRail({ p, me, nameOf, go, manageTools }: { p: ProjectView; me: Me; nameOf: (id: string) => string; go: (t: Tab) => void; manageTools: () => void }) {
   const counts: Record<string, number> = { done: 0, in_progress: 0, todo: 0 };
   p.tasks.forEach((t) => { counts[t.status] = (counts[t.status] ?? 0) + 1; });
+  // Technology tags from the files that actually exist in the project.
+  const techs = [...new Set(Object.keys(p.files).map((f) => f.includes('.') ? f.split('.').pop()!.toLowerCase() : '').filter((e) => e && e.length <= 5 && e !== 'md'))].sort();
+  const openTasks = (uid: string) => p.tasks.filter((t) => t.assigneeId === uid && t.status !== 'done').length;
   return (
     <aside className="rrail" aria-label="Project overview">
       <div className="card">
         <strong>Project overview</strong>
         <div className="muted">{p.name}</div>
+        {p.summary && p.summary !== p.name && <div className="muted">{p.summary}</div>}
+        {techs.length > 0 && <div className="row wrap" style={{ marginTop: 6 }}>{techs.map((t) => <span key={t} className="tag">{t}</span>)}</div>}
         <div className="row wrap" style={{ marginTop: 6 }}>
           <span className="tag owner">{counts.done} done</span>
           <span className="tag">{counts.in_progress} in progress</span>
@@ -89,7 +94,7 @@ function RightRail({ p, me, nameOf }: { p: ProjectView; me: Me; nameOf: (id: str
         </div>
       </div>
       <div className="card">
-        <strong>Tasks</strong>
+        <div className="row spread"><strong>Tasks</strong><span className="muted">{counts.done} of {p.tasks.length} done</span></div>
         {p.tasks.length === 0 && <div className="muted">No tasks yet.</div>}
         {p.tasks.slice(0, 6).map((t) => (
           <div key={t.id} className="row spread" style={{ marginTop: 6 }}>
@@ -97,6 +102,7 @@ function RightRail({ p, me, nameOf }: { p: ProjectView; me: Me; nameOf: (id: str
             <span className="muted">{nameOf(t.assigneeId)} · {t.status.replace('_', ' ')}</span>
           </div>
         ))}
+        <div className="row" style={{ marginTop: 8 }}><button className="small" onClick={() => go('tasks')}>View all</button></div>
       </div>
       <div className="card">
         <strong>AI & tools</strong>
@@ -106,16 +112,17 @@ function RightRail({ p, me, nameOf }: { p: ProjectView; me: Me; nameOf: (id: str
         {p.skills.map((it: any) => (
           <div key={it.id} className="row spread" style={{ marginTop: 6 }}>
             <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</span>
-            <span className="muted">{it.kind}{it.hosted ? ' · hosted' : ''}</span>
+            <span className="muted">{it.approvedByOwner ? 'enabled' : 'waiting for owner'}</span>
           </div>
         ))}
+        <div className="row" style={{ marginTop: 8 }}><button className="small" onClick={manageTools}>Manage</button></div>
       </div>
       <div className="card">
-        <strong>Team</strong>
+        <div className="row spread"><strong>Team</strong><button className="small" onClick={() => go('team')}>Manage</button></div>
         {p.members.map((m) => (
           <div key={m.userId} className="row spread" style={{ marginTop: 6 }}>
             <span>{nameOf(m.userId)}</span>
-            <span className="muted">{m.role}</span>
+            <span className="muted">{m.role} · {openTasks(m.userId)} open</span>
           </div>
         ))}
       </div>
@@ -513,7 +520,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
       {sheet === 'team' && <TeamSheet p={p} user={me.id} nameOf={nameOf} actOp={(n, a) => actOp(n, a, pid)} close={() => setSheet(null)} err={err} backupJson={backupJson} setBackupJson={setBackupJson} />}
       {sheet === 'skills' && <SkillsSheet p={p} user={me.id} q={q} setQ={setQ} actOp={(n, a) => actOp(n, a, pid)} pid={pid} close={() => setSheet(null)} err={err} />}
     </div>
-    <RightRail p={p} me={me} nameOf={nameOf} />
+    <RightRail p={p} me={me} nameOf={nameOf} go={setTab} manageTools={() => setSheet('skills')} />
     </div>
   );
 }
@@ -969,10 +976,11 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
 function DiscoverView() {
   const [q, setQ] = useState('');
   const items = useMemo(() => searchCatalog(q), [q]);
-  const groups: { key: SkillItem['kind']; title: string }[] = [
-    { key: 'skill', title: 'Skills' },
-    { key: 'mcp', title: 'MCP servers' },
-    { key: 'prebuilt', title: 'Open-source prebuilt components' },
+  const groups: { key: string; title: string; match: (i: SkillItem) => boolean }[] = [
+    { key: 'skill', title: 'Skills', match: (i) => i.kind === 'skill' && !i.hosted },
+    { key: 'mcp', title: 'MCP servers', match: (i) => i.kind === 'mcp' && !i.hosted },
+    { key: 'prebuilt', title: 'Open-source prebuilt components', match: (i) => i.kind === 'prebuilt' && !i.hosted },
+    { key: 'hosted', title: 'Hosted services (not open-source, not installable here)', match: (i) => !!i.hosted },
   ];
   const stateTag = (it: SkillItem) => it.hosted ? 'Hosted service - information only' : localRunnable(it) ? 'Runs locally in this build' : 'Needs a connection - not available in this build';
   return (
@@ -981,7 +989,7 @@ function DiscoverView() {
       <div className="note">The starter catalogue. Every item says what it really is: local tools run here, everything else is labelled with what it would need. Nothing on this page is a live external connection - adding a tool to a project happens from the tools button beside the chat composer.</div>
       <input aria-label="Search Discover catalogue" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search skills, MCP servers, prebuilt" />
       {groups.map((g) => {
-        const list = items.filter((i) => i.kind === g.key);
+        const list = items.filter(g.match);
         if (list.length === 0) return null;
         return (
           <div key={g.key}>
@@ -1000,4 +1008,4 @@ function DiscoverView() {
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
     </div>
   );
-      }
+}
