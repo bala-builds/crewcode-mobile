@@ -2,10 +2,13 @@
 <!-- @shared PROJECT_NAME @shared API_BASE -->
 <h1>Habit Tracker</h1>
 <input id="n" placeholder="New habit"><button id="add">Add</button>
+<p id="who"></p>
 <ul id="list"></ul>
 <script>
 const API_BASE='/api/v1';
+async function who(){ const r=await fetch(API_BASE+'/settings'); const s=await r.json(); document.getElementById('who').textContent='Settings for '+s.displayName+' (served by the settings feature)'; }
 async function load(){ const r=await fetch(API_BASE+'/habits'); const hs=await r.json(); document.getElementById('list').innerHTML=hs.map(h=>'<li>'+h.name+'</li>').join(''); }
 document.getElementById('add').onclick=async()=>{ const name=document.getElementById('n').value; await fetch(API_BASE+'/habits',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})}); document.getElementById('n').value=''; load(); };
+who();
 load();
 </script></body></html>
