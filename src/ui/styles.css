@@ -54,3 +54,33 @@ iframe { width: 100%; height: 55dvh; border: 1px solid var(--line); border-radiu
 .sheet { background: var(--bg); width: 100%; max-height: 85%; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 16px; }
 .code { font: 24px/1.2 ui-monospace, Menlo, monospace; letter-spacing: 2px; font-weight: 700; }
 .empty { text-align: center; color: var(--ink2); padding: 28px 12px; }
+
+/* Desktop structure (reference layout): left rail + content + right overview rail.
+   Structure only - palette, components and mobile layout are unchanged. */
+.rail, .rrail { display: none; }
+@media (min-width: 1000px) {
+  .app { max-width: none; }
+  .shell { flex: 1; min-height: 0; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+  .shell-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+  .rail { display: flex; flex-direction: column; gap: 4px; padding: 14px 10px; background: var(--card); border-right: 1px solid var(--line); overflow-y: auto; }
+  .rail-brand { font-weight: 800; font-size: 18px; padding: 4px 10px 12px; }
+  .rail-nav { text-align: left; border: 0; background: none; min-height: 40px; border-radius: 10px; font-weight: 600; }
+  .rail-nav:hover { background: var(--bg); }
+  .rail-sect { font-size: 12px; color: var(--ink2); text-transform: uppercase; letter-spacing: .4px; padding: 14px 10px 4px; }
+  .rail-proj { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; border: 1px solid transparent; background: none; min-height: 0; padding: 8px 10px; border-radius: 10px; }
+  .rail-proj.on { background: var(--bg); border-color: var(--line); }
+  .rail-user { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 10px; border-top: 1px solid var(--line); }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+  .ws { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
+  .ws-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+  .rrail { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-left: 1px solid var(--line); overflow-y: auto; background: var(--bg); }
+}
+/* Below 1000px .ws and .shell are plain blocks: the existing mobile layout is untouched. */
+
+/* Desktop refinements: tabs at the top of the center column; home keeps one set of actions. */
+@media (min-width: 1000px) {
+  .ws-main .topbar { order: -2; }
+  .ws-main .tabs { order: -1; border-top: 0; border-bottom: 1px solid var(--line); }
+  .ws-main .tabs button.on { box-shadow: inset 0 -3px 0 var(--accent); }
+  .home-top, .home-actions { display: none; }
+}
