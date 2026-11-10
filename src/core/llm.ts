@@ -1,5 +1,5 @@
 // Provider adapter. Keys are passed in per call and never stored, logged or put in error text.
-// Groq adapter verified live 10 Nov 2026: approved build calls from the app UI returned HTTP 200. Account plan status not directly verified (rate-limit headers matched the documented free tier). Other providers remain fake-fetch-tested only.
+// Groq adapter verified live 10 Nov 2026: approved build calls from the app UI returned HTTP 200. Account plan verified Free ($0, no billing until an explicit upgrade) on the Groq console Billing page after the calls. Other providers remain fake-fetch-tested only.
 export type ChatTurn = { role: 'system' | 'user' | 'assistant'; content: string };
 export type LlmResult = { ok: true; text: string } | { ok: false; error: string };
 export interface LlmProvider { id: string; complete(turns: ChatTurn[]): Promise<LlmResult> }
