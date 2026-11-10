@@ -7,8 +7,8 @@ export interface TestUser { id: string; name: string }
 
 export interface AiAccess {
   kind: 'owner' | 'own';
-  provider?: ProviderLabel; // only for own
-  // An own key is never stored here. See keyring.ts (memory only).
+  provider?: ProviderLabel; // set for own keys, and for the owner's own key on the owner model
+  // Keys themselves are never stored here. See providers.ts keyring (memory only).
 }
 
 export interface Member {
@@ -56,6 +56,8 @@ export interface ChatMessage {
   kind: 'prompt' | 'ai_plan' | 'ai_build' | 'ai_error' | 'system';
   text: string;
   files?: string[]; // paths touched by an ai_build message
+  /** false only for messages produced by a real provider call; simulated is the default */
+  simulated?: boolean;
   at: number;
 }
 
