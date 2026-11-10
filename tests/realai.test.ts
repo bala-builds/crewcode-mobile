@@ -26,7 +26,7 @@ describe('real build flow through start/apply ops (fake provider)', () => {
     const provider = providerFor('u-seeta', 'Grok', async (u, i) => {
       expect(u).toBe('https://api.groq.com/openai/v1/chat/completions');
       expect(i.headers.authorization).toBe('Bearer TESTKEY-1');
-      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify({ message: 'Built the screen.', files: [{ path: 'frontend/index.html', content: '<h1>real</h1>' }] }) } }] }) };
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify({ message: 'Built the screen.', files: [{ path: 'home/index.html', content: '<h1>real</h1>' }] }) } }] }) };
     })!;
     const task = api.state.projects[0].tasks.find((t) => t.assigneeId === 'u-seeta')!;
     expect(call(api, 'u-seeta', 'startTaskRun', { projectId: pid, taskId: task.id }).ok).toBe(true);
@@ -37,7 +37,7 @@ describe('real build flow through start/apply ops (fake provider)', () => {
     const applied = call(api, 'u-seeta', 'applyTaskRun', { projectId: pid, taskId: task.id, result, simulated: false });
     expect(applied.ok).toBe(true);
     const p = api.state.projects[0];
-    expect(p.files['frontend/index.html']).toBe('<h1>real</h1>');
+    expect(p.files['home/index.html']).toBe('<h1>real</h1>');
     const msg = p.messages.at(-1)!;
     expect(msg.kind).toBe('ai_build');
     expect(msg.simulated).toBe(false);
@@ -48,7 +48,7 @@ describe('real build flow through start/apply ops (fake provider)', () => {
     const { api, pid } = setup();
     call(api, 'u-seeta', 'setAiAccess', { projectId: pid, access: { kind: 'own', provider: 'GPT' } });
     keyring.set('u-seeta', 'GPT', { key: 'TESTKEY-2', endpointId: 'openai', model: 'test-model' });
-    const provider = providerFor('u-seeta', 'GPT', async () => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify({ message: 'sneaky', files: [{ path: 'backend/evil.ts', content: 'x' }] }) } }] }) }))!;
+    const provider = providerFor('u-seeta', 'GPT', async () => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify({ message: 'sneaky', files: [{ path: 'settings/evil.ts', content: 'x' }] }) } }] }) }))!;
     const task = api.state.projects[0].tasks.find((t) => t.assigneeId === 'u-seeta')!;
     call(api, 'u-seeta', 'startTaskRun', { projectId: pid, taskId: task.id });
     const res = await provider.complete(buildTaskPrompt(task, { name: 'Habit Tracker', files: {} }, ''));
@@ -57,7 +57,7 @@ describe('real build flow through start/apply ops (fake provider)', () => {
     const applied = call(api, 'u-seeta', 'applyTaskRun', { projectId: pid, taskId: task.id, result: parsed, simulated: false });
     expect(applied.ok).toBe(true);
     const p = api.state.projects[0];
-    expect(p.files['backend/evil.ts']).toBeUndefined();
+    expect(p.files['settings/evil.ts']).toBeUndefined();
     expect(p.messages.at(-1)!.kind).toBe('ai_error');
   });
 
@@ -65,20 +65,20 @@ describe('real build flow through start/apply ops (fake provider)', () => {
     const { api, pid } = setup();
     const task = api.state.projects[0].tasks.find((t) => t.assigneeId === 'u-seeta')!;
     call(api, 'u-seeta', 'startTaskRun', { projectId: pid, taskId: task.id });
-    const result = { ok: true, message: 'm', files: { 'frontend/a.txt': 'a' } };
+    const result = { ok: true, message: 'm', files: { 'home/a.txt': 'a' } };
     expect(call(api, 'u-hanuma', 'applyTaskRun', { projectId: pid, taskId: task.id, result, simulated: false }).ok).toBe(false);
     // Stop the run; the late provider result is discarded.
     call(api, 'u-seeta', 'cancelTaskRun', { projectId: pid, taskId: task.id });
     const applied = call(api, 'u-seeta', 'applyTaskRun', { projectId: pid, taskId: task.id, result, simulated: false });
     expect(applied.ok && applied.data?.discarded).toBe(true);
-    expect(api.state.projects[0].files['frontend/a.txt']).toBeUndefined();
+    expect(api.state.projects[0].files['home/a.txt']).toBeUndefined();
   });
 
   it('owner planning with a real key posts an unlabeled plan; teammates cannot apply one', async () => {
     const { api, pid } = setup();
     call(api, 'u-ram', 'setAiAccess', { projectId: pid, access: { kind: 'owner', provider: 'Claude' } });
     keyring.set('u-ram', 'Claude', { key: 'TESTKEY-3', endpointId: 'anthropic', model: 'claude-test' });
-    const plan = [{ title: 'Screens', detail: 'd', assignee: 'Seeta', folder: 'frontend/' }, { title: 'API', detail: 'd', assignee: 'Hanuma', folder: 'backend/' }];
+    const plan = [{ title: 'Screens', detail: 'd', assignee: 'Seeta', folder: 'home/' }, { title: 'API', detail: 'd', assignee: 'Hanuma', folder: 'settings/' }];
     const provider = anthropicProvider({ apiKey: 'TESTKEY-3', model: 'claude-test', fetchImpl: async (u, i) => {
       expect(u).toBe('https://api.anthropic.com/v1/messages');
       expect(i.headers['x-api-key']).toBe('TESTKEY-3');
