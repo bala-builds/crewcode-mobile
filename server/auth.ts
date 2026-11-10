@@ -68,12 +68,17 @@ export function getSession(id: string | undefined, now = Date.now()): Session | 
 
 export function destroySession(id: string | undefined): void { if (id) sessions.delete(id); }
 
+// Loopback dev runs plain HTTP; over HTTPS (deployed) cookies get Secure.
+// CSRF posture for authenticated mutations: the session cookie is SameSite=Lax
+// (not sent on cross-site POSTs) and /api only accepts application/json bodies,
+// which cross-site forms cannot send. CREWCODE_REQUIRE_AUTH=1 removes the test
+// identity path entirely for deployment.
 export const SESSION_COOKIE = 'crewcode_session';
-export function sessionCookie(id: string): string {
-  return `${SESSION_COOKIE}=${id}; HttpOnly; SameSite=Lax; Path=/`;
+export function sessionCookie(id: string, secure = false): string {
+  return `${SESSION_COOKIE}=${id}; HttpOnly; SameSite=Lax; Path=/${secure ? '; Secure' : ''}`;
 }
-export function clearSessionCookie(): string {
-  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+export function clearSessionCookie(secure = false): string {
+  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure ? '; Secure' : ''}`;
 }
 export function sessionIdFromCookie(header: string | undefined): string | undefined {
   if (!header) return undefined;
@@ -82,15 +87,31 @@ export function sessionIdFromCookie(header: string | undefined): string | undefi
   return v && /^[0-9a-f]{32}$/.test(v) ? v : undefined;
 }
 
-export function startGithubSignIn(cfg: AuthConfig | null): AuthResult {
-  if (!cfg) return { status: 404, body: { ok: false, error: 'GitHub sign-in is not configured on this server.' } };
-  const q = new URLSearchParams({ client_id: cfg.clientId, redirect_uri: cfg.callbackUrl, state: issueState() });
-  return { status: 302, location: 'https://github.com/login/oauth/authorize?' + q.toString() };
+// The state nonce is ALSO set as an HttpOnly cookie, so a callback must come
+// from the same browser that started sign-in (login CSRF protection), not just
+// carry any issued state string.
+export const STATE_COOKIE = 'crewcode_oauth_state';
+export function stateCookie(state: string, secure: boolean): string {
+  return `${STATE_COOKIE}=${state}; HttpOnly; SameSite=Lax; Path=/${secure ? '; Secure' : ''}`;
+}
+export function stateFromCookie(header: string | undefined): string | undefined {
+  if (!header) return undefined;
+  const m = header.split(';').map((p) => p.trim()).find((p) => p.startsWith(STATE_COOKIE + '='));
+  const v = m?.slice(STATE_COOKIE.length + 1);
+  return v && /^[0-9a-f]{32}$/.test(v) ? v : undefined;
 }
 
-export async function finishGithubSignIn(cfg: AuthConfig | null, query: { code?: string; state?: string }, fetchImpl: FetchLike, appUrl = 'http://localhost:5177'): Promise<AuthResult> {
+export function startGithubSignIn(cfg: AuthConfig | null): AuthResult {
+  if (!cfg) return { status: 404, body: { ok: false, error: 'GitHub sign-in is not configured on this server.' } };
+  const state = issueState();
+  const q = new URLSearchParams({ client_id: cfg.clientId, redirect_uri: cfg.callbackUrl, state });
+  return { status: 302, location: 'https://github.com/login/oauth/authorize?' + q.toString(), setCookie: stateCookie(state, cfg.callbackUrl.startsWith('https:')) };
+}
+
+export async function finishGithubSignIn(cfg: AuthConfig | null, query: { code?: string; state?: string }, fetchImpl: FetchLike, appUrl = 'http://localhost:5177', cookieState?: string): Promise<AuthResult> {
   if (!cfg) return { status: 404, body: { ok: false, error: 'GitHub sign-in is not configured on this server.' } };
   if (!query.code || !query.state) return { status: 400, body: { ok: false, error: 'Missing code or state.' } };
+  if (!cookieState || cookieState !== query.state) return { status: 400, body: { ok: false, error: 'State cookie mismatch. Start sign-in again in the same browser.' } };
   if (!consumeState(query.state)) return { status: 400, body: { ok: false, error: 'State mismatch. Start sign-in again.' } };
   let token: string;
   try {
@@ -114,7 +135,7 @@ export async function finishGithubSignIn(cfg: AuthConfig | null, query: { code?:
     // Handshake verified: bind the session to the immutable GitHub user id and
     // hand the browser back to the app with an HttpOnly session cookie.
     const s = createSession(u.id, u.login);
-    return { status: 302, location: appUrl, setCookie: sessionCookie(s.id) };
+    return { status: 302, location: appUrl, setCookie: sessionCookie(s.id, cfg.callbackUrl.startsWith('https:')) };
   } catch {
     return { status: 502, body: { ok: false, error: 'Could not reach GitHub to read the profile.' } };
   }
