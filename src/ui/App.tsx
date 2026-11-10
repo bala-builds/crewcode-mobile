@@ -5,6 +5,7 @@ import { PROVIDERS, PROVIDER_ENDPOINTS, keyring, maskKey, providerFor } from '..
 import { buildTaskPrompt, parseBuildJson } from '../core/execution';
 import { planWithProvider } from '../core/planner';
 import { searchCatalog, CATALOG, localRunnable } from '../core/skills';
+import { buildPreviewDoc, buildBackendDoc, backendPathFor } from '../core/preview';
 import { integrationCheck, reviewFingerprint } from '../core/contract';
 import { driveStatus } from '../core/drive';
 import { HttpClient, op, type ClientData, type ProjectView } from './client';
@@ -553,12 +554,28 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
 function PreviewView({ p }: { p: ProjectView }) {
   const readable = Object.keys(p.files).filter((f) => f.endsWith('index.html')).sort();
   const [sel, setSel] = useState<string | null>(null); const path = sel && readable.includes(sel) ? sel : readable[0];
+  const pageRef = useRef<HTMLIFrameElement>(null);
+  const beRef = useRef<HTMLIFrameElement>(null);
+  const apiPath = path ? backendPathFor(path) : null;
+  const apiSrc = apiPath ? p.files[apiPath] : undefined;
+  // Relay between the page iframe and the feature-backend iframe (see core/preview.ts).
+  useEffect(() => {
+    const route = (e: MessageEvent) => {
+      const d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.__cc === 'api-req' && e.source === pageRef.current?.contentWindow) beRef.current?.contentWindow?.postMessage({ ...d, __cc: 'api-run' }, '*');
+      if (d.__cc === 'api-res' && e.source === beRef.current?.contentWindow) pageRef.current?.contentWindow?.postMessage(d, '*');
+    };
+    window.addEventListener('message', route);
+    return () => window.removeEventListener('message', route);
+  }, [path, apiSrc]);
   if (!path) return <div className="screen"><div className="empty">Nothing to preview yet. Run a simulated build for a frontend task first.</div></div>;
   return (
     <div className="screen">
-      <div className="note">Preview of {path}: the real file runs with scripts on in an opaque-origin iframe - no access to the app or its storage. Network is not blocked. Not a secure runtime for untrusted code.</div>
+      <div className="note">Preview of {path}: the page runs with scripts on in an opaque-origin iframe - no access to the app or its storage.{apiSrc ? ' /api calls are answered by the feature api.ts running in a second sandbox: plain-JS route modules only - no packages, no database, no other languages.' : ' No api.ts next to it, so /api calls get nothing.'} Network is otherwise not blocked. Not a secure runtime for untrusted code.</div>
       {readable.length > 1 && <div className="files">{readable.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => setSel(f)}>{f}</button>)}</div>}
-      <iframe title="Preview" sandbox="allow-scripts" srcDoc={p.files[path]} />
+      <iframe title="Preview" sandbox="allow-scripts" srcDoc={buildPreviewDoc(p.files[path])} ref={pageRef} />
+      {apiSrc && <iframe title="Backend runtime" sandbox="allow-scripts" srcDoc={buildBackendDoc(apiSrc)} ref={beRef} style={{ display: 'none' }} />}
     </div>
   );
 }
@@ -727,4 +744,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-                                                            }
+                                                                                }
