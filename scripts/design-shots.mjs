@@ -16,6 +16,16 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes('Habit Tracker'), { timeout: 30000 });
   await sleep(1200);
   await page.screenshot({ path: OUT + '/60a-desktop-workspace.png' });
+  const clickTab = async (label, file) => {
+    await page.evaluate((l) => { [...document.querySelectorAll('[role=tab]')].find((b) => b.textContent.trim() === l)?.click(); }, label);
+    await sleep(900);
+    await page.screenshot({ path: OUT + '/' + file });
+  };
+  await clickTab('Tasks', '60d-desktop-tasks.png');
+  await clickTab('Files', '60e-desktop-files.png');
+  await clickTab('Team', '60f-desktop-team.png');
+  await clickTab('Settings', '60g-desktop-settings.png');
+  await clickTab('Chat', '60h-desktop-chat.png');
   await page.evaluate(() => { [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Projects')?.click(); });
   await sleep(800);
   await page.screenshot({ path: OUT + '/60b-desktop-home.png' });
