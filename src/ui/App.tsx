@@ -71,7 +71,7 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
         const pid = l.data[0]?.id as string;
         let g = await op(cli, 'u-seeta', 'getProject', { projectId: pid });
         if (g.ok && g.data.tasks.length === 0) { await op(cli, 'u-ram', 'assignTasks', { projectId: pid }); g = await op(cli, 'u-seeta', 'getProject', { projectId: pid }); }
-        if (g.ok && g.data.tasks[0] && !g.data.files['frontend/index.html']) await op(cli, 'u-seeta', 'runBuild', { projectId: pid, taskId: g.data.tasks[0].id });
+        if (g.ok && g.data.tasks[0] && !g.data.files['home/index.html']) await op(cli, 'u-seeta', 'runBuild', { projectId: pid, taskId: g.data.tasks[0].id });
         const me0: Me = who === 'seeta' ? { id: 'u-seeta', name: 'Seeta' } : { id: 'u-ram', name: 'Ram' };
         if (!cancelled) { setMe(me0); await refreshFor(me0.id, pid); go({ name: 'workspace', pid }); }
         return;
@@ -344,7 +344,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   const owner = p.role === 'owner';
   const nameOf = (id: string) => (id === 'ai' ? 'AI' : p.names[id] ?? 'Unknown');
   const tasks = p.tasks;
-  const activeThread = owner ? thread : (tasks[0]?.id ?? null);
+  const activeThread = owner ? thread : (thread ?? tasks[0]?.id ?? null);
   const msgs = owner && activeThread ? p.messages.filter((m) => m.taskId === activeThread) : p.messages;
 
   return (
@@ -403,7 +403,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
 }
 
 function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, realAi, onAssign, onBuild, onCancel, openCode, err }: Record<string, any>) {
-  const myTask = !owner ? tasks[0] : tasks.find((t: any) => t.id === thread);
+  const myTask = !owner ? (tasks.find((t: any) => t.id === thread) ?? tasks[0]) : tasks.find((t: any) => t.id === thread);
   return (
     <div className="screen">
       {owner && tasks.length > 0 && (
@@ -412,8 +412,9 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, real
           {tasks.map((t: any) => <button key={t.id} className={'chip small' + (thread === t.id ? ' on' : '')} onClick={() => setThread(t.id)}>{nameOf(t.assigneeId)}</button>)}
         </div>
       )}
+      {!owner && tasks.length > 1 && <div className="row wrap" style={{ marginBottom: 8 }}>{tasks.map((t: any) => <button key={t.id} className={'chip small' + (thread === t.id ? ' on' : '')} onClick={() => setThread(t.id)}>{t.folder}</button>)}</div>}
       {!owner && myTask && <div className="card"><strong>{myTask.title}</strong><div className="muted">Folder: {myTask.folder}</div></div>}
-      {!owner && !myTask && <div className="empty">You have no task yet. The owner's AI assigns tasks from the project prompt and your interests.</div>}
+      {!owner && !myTask && <div className="empty">You have no task yet. The owner's AI assigns features from the project prompt.</div>}
       {owner && p.tasks.length === 0 && (
         <div className="card"><strong>Ready to divide the work?</strong><p className="muted">{realAi ? 'Your AI reads PRD.md and assigns a folder to each teammate by interest.' : 'The simulated AI reads PRD.md and assigns a folder to each teammate by interest.'}</p>
           <button className="primary" onClick={onAssign} disabled={p.members.length < 2}>{p.members.length < 2 ? 'Waiting for teammates' : realAi ? 'Assign tasks' : 'Assign tasks (simulated)'}</button></div>
@@ -693,7 +694,7 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
             </div>
             {added && added.approvedByOwner && localRunnable(it) && (
               <div className="row" style={{ marginTop: 8 }}>
-                <input aria-label={`File for ${it.label}`} placeholder="file path, e.g. frontend/index.html" value={runPath[it.id] ?? ''} onChange={(e) => setRunPath({ ...runPath, [it.id]: e.target.value })} />
+                <input aria-label={`File for ${it.label}`} placeholder="file path, e.g. home/index.html" value={runPath[it.id] ?? ''} onChange={(e) => setRunPath({ ...runPath, [it.id]: e.target.value })} />
                 <button className="small primary" onClick={() => run(it.id)}>Run</button>
               </div>
             )}
@@ -704,4 +705,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-}
+                                                                    }
