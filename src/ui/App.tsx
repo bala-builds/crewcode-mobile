@@ -450,6 +450,32 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
   const path = open && files.includes(open) ? open : files.find((f) => canWriteView(p, f)) ?? files[0] ?? null;
   const [text, setText] = useState(''); const [dirty, setDirty] = useState(false); const [rev, setRev] = useState(0);
   const [conflict, setConflict] = useState<{ mine: string } | null>(null);
+  const [adding, setAdding] = useState(false); const [newName, setNewName] = useState(''); const [newErr, setNewErr] = useState<string | null>(null);
+  // Folders this user may create files in, derived from the redacted view (mirrors the server gate).
+  const roots = p.role === 'owner' ? [''] : [...new Set(p.tasks.map((t) => t.folder))];
+  const createFile = async () => {
+    const name = newName.trim();
+    const parts = name.split('/');
+    if (!name || name.startsWith('/') || name.includes('\\') || name.includes('\0') || parts.some((s) => s === '' || s === '.' || s === '..')) { setNewErr('Use a plain relative path like ' + (roots[0] || 'folder/') + 'name.ext - no leading slash, no ..'); return; }
+    if (p.files[name] !== undefined) { setNewErr(name + ' already exists. Open it from the file list instead.'); return; }
+    if (!roots.some((r) => name.startsWith(r))) { setNewErr(p.role === 'owner' ? 'That path is not valid.' : 'You can only create files inside your folder (' + roots.join(', ') + ').'); return; }
+    // baseRev 0 means "must not exist yet": if someone else created it first, this conflicts instead of overwriting.
+    const r = await onSave(name, '', 0);
+    if (r?.ok) { setAdding(false); setNewName(''); setNewErr(null); setOpen(name); }
+  };
+  const newFileRow = roots.length > 0 && (
+    <div style={{ marginBottom: 8 }}>
+      {!adding && <button className="small" onClick={() => { setAdding(true); setNewName(roots[0] ?? ''); setNewErr(null); }}>New file</button>}
+      {adding && (
+        <div className="row wrap">
+          <input aria-label="New file path" value={newName} onChange={(e) => { setNewName(e.target.value); setNewErr(null); }} placeholder={(roots[0] || 'folder/') + 'name.ext'} style={{ flex: 1, minWidth: 0 }} />
+          <button className="small primary" onClick={createFile}>Create</button>
+          <button className="small" onClick={() => { setAdding(false); setNewErr(null); }}>Cancel</button>
+        </div>
+      )}
+      {newErr && <div className="err" role="alert">{newErr}</div>}
+    </div>
+  );
   useEffect(() => {
     const serverRev = path ? p.fileRevs?.[path] ?? 0 : 0;
     const draft = path ? editMemory.get(editKey(path)) : undefined;
@@ -461,7 +487,7 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
     } else if (draft && draft.text !== current) { setText(draft.text); setRev(serverRev); setDirty(true); setConflict(null); }
     else { setText(current); setRev(serverRev); setDirty(false); setConflict(null); }
   }, [path, p.files]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!path) return <div className="screen"><div className="empty">No files you can open yet.</div></div>;
+  if (!path) return <div className="screen">{newFileRow || <div className="empty">No files you can open yet.</div>}</div>;
   const editable = canWriteView(p, path);
   const t = p.tasks[0];
   const findings = p.role !== 'owner' && t ? integrationCheck(p.files['CONTRACT.md'], p.files, t.folder) : [];
@@ -479,6 +505,7 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
   return (
     <div className="screen">
       <div className="files">{files.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => { setOpen(f); clearErr(); }}>{f}</button>)}</div>
+      {newFileRow}
       <div className="row spread"><strong style={{ overflowWrap: 'anywhere' }}>{path}</strong><span className="tag">{editable ? 'editable' : 'read only'}</span></div>
       {!editable && <div className="note">You can read this file. Only the owner can change it.</div>}
       {conflict && (
@@ -526,7 +553,7 @@ function TasksView({ p, nameOf, onStatus, actOp, err }: { p: ProjectView; nameOf
     if (!r) return null;
     if (r.state === 'accepted') return <div className="muted" style={{ marginTop: 8 }}>Merged into main/{t.folder} - the owner sees it in the main folder.</div>;
     if (r.state === 'submitted') return <div className="muted" style={{ marginTop: 8 }}>Sent for merge review.</div>;
-    if (r.state === 'ready') return <div className="muted" style={{ marginTop: 8 }}>Check passed. Waiting for the owner to merge.</div>;
+    if (r.state === 'ready') return <div className="muted" style={{ marginTop: 8 }}>Name check passed (shared names declared). Waiting for the owner to merge.</div>;
     return <div className="err" role="alert" style={{ marginTop: 8 }}>Changes requested: {r.findings.map((f) => `${f.name} in ${f.path}`).join(', ')} - not in CONTRACT.md</div>;
   };
   return (
@@ -536,7 +563,7 @@ function TasksView({ p, nameOf, onStatus, actOp, err }: { p: ProjectView; nameOf
       {p.role === 'owner' && p.tasks.length > 0 && (
         <div className="card">
           <strong>Integration review</strong>
-          <p className="muted">A teammate submits a done task for merge. You run the contract check, then merge. Open mismatches or any edit after the check block the merge.</p>
+          <p className="muted">A teammate submits a done task for merge. You run the contract check, then merge. The check is a name check only: it verifies that every @shared name used in the folder is declared in CONTRACT.md. It does not verify that interfaces actually match across files. Open mismatches or any edit after the check block the merge.</p>
           {p.tasks.every((t) => !t.review) && <div className="muted">Nothing submitted for merge yet.</div>}
           {p.tasks.filter((t) => t.review).map((t) => {
             const r = t.review!;
@@ -677,4 +704,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-            }
+}
