@@ -19,7 +19,7 @@ export const LOCAL_TOOL_HANDLERS: Record<string, (content: string, contract: str
       (shared.length ? `Shared names used: ${shared.join(', ')}.` : 'No shared names used.') +
       (missing.length ? ` Not in the contract: ${missing.join(', ')}.` : ' All shared names match the contract.');
   },
-  'cloudflare-security': (content, _contract, path) => {
+  'secret-scan': (content, _contract, path) => {
     const found = scanForKeys(content);
     return found.length
       ? `Security scan of ${path}: ${found.length} possible secret(s) found and masked: ${found.join(', ')}. Remove them.`
