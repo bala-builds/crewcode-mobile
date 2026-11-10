@@ -24,19 +24,40 @@ try{
  await click(owner,'Assign tasks (simulated)');await waitText(owner,'Review the proposed split');await click(owner,'Approve plan');await waitText(owner,'Seeta');await shot(owner,'03-owner-assigned');
  await click(teammate,'Back');await teammate.reload();await waitText(teammate,'Browser HTTP App');for(const h of await teammate.$$('button.card')){if(await h.evaluate(e=>e.textContent.includes('Browser HTTP App'))){await h.click();break;}}
  await click(teammate,'Run simulated build');await waitText(teammate,'simulated build');await shot(teammate,'04-teammate-build');
+ // Full-stack preview proof: the simulated page fetches '/api/v1/health'; the Preview
+ // serves it from home/api.ts running in the hidden sandboxed backend iframe.
+ await tab(teammate,'Preview');await waitText(teammate,'home/index.html'); // single page: auto-selected, no chips
+ {
+   let apiText='';
+   for(const fr of teammate.frames()){ if(fr===teammate.mainFrame())continue;
+     try{ const has=await fr.evaluate(()=>!!document.getElementById('api')); if(!has)continue;
+       await fr.waitForFunction(()=>/API says: ok/.test(document.getElementById('api').textContent),{timeout:15000}).catch(()=>{});
+       apiText=await fr.evaluate(()=>document.getElementById('api').textContent);
+     }catch{}
+   }
+   console.log('FULLSTACK-PREVIEW '+JSON.stringify(apiText));
+   assert(/API says: ok/.test(apiText),'full-stack preview did not serve the API: '+apiText);
+   await shot(teammate,'04b-preview-fullstack');
+ }
+ await tab(teammate,'Code');
  await tab(teammate,'Code');await waitText(teammate,'home/index.html');await click(teammate,'home/index.html');const editor=await teammate.$('.editor');await editor.click();await teammate.keyboard.down('Control');await teammate.keyboard.press('KeyA');await teammate.keyboard.up('Control');await teammate.keyboard.type('<h1>HTTP browser edit</h1>');await click(teammate,'Save');await teammate.waitForFunction(()=>!document.body.innerText.includes('Unsaved changes'));await shot(teammate,'05-teammate-saved');
  const saved=JSON.parse(fs.readFileSync(data));const pr=saved.projects.find(p=>p.name==='Browser HTTP App');assert.equal(pr.files['home/index.html'],'<h1>HTTP browser edit</h1>');
  const scoped=requests.filter(r=>r.as==='u-seeta'&&r.op==='getProject');assert(scoped.length>0);const views=responses.filter(r=>r.ok&&r.data?.role==='teammate');assert(views.length>0);assert(views.every(r=>r.data.teamCode===undefined));assert(views.every(r=>Object.keys(r.data.files).every(f=>!f.startsWith('settings/'))));
- await click(teammate,'PRD.md');assert(await teammate.$eval('.editor',e=>e.readOnly));await shot(teammate,'06-teammate-root-readonly');await tab(teammate,'Preview');await waitText(teammate,'home/index.html');await shot(teammate,'07-preview');
+ await click(teammate,'PRD.md');assert(await teammate.$eval('.editor',e=>e.readOnly));await shot(teammate,'06-teammate-root-readonly');await tab(teammate,'Preview');await waitText(teammate,'home/index.html');
+ await shot(teammate,'07-preview');
  const frame=await (await teammate.$('iframe')).contentFrame();
  const isolation=await frame.evaluate(async()=>{
    let parentBlocked=false, storageBlocked=false, corsBlocked=false;
    try{void parent.document.body;}catch{parentBlocked=true;}
    try{void localStorage.length;}catch{storageBlocked=true;}
-   try{await fetch('/api',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({as:'u-ram',op:'listUsers'})});}catch{corsBlocked=true;}
-   return {parentBlocked,storageBlocked,corsBlocked};
+   try{const r=await fetch('/settings',{method:'POST'});corsBlocked=false;}catch{corsBlocked=true;}
+   let apiSandboxed=false;
+   try{const r=await fetch('/api/nope');apiSandboxed=(r.status===404);}catch{}
+   return {parentBlocked,storageBlocked,corsBlocked,apiSandboxed};
  });
- assert(isolation.parentBlocked&&isolation.storageBlocked&&isolation.corsBlocked,JSON.stringify(isolation));
+ // /api is now answered by the sandboxed backend (404 for unknown routes), not the network;
+ // non-/api relative fetch still cannot reach the parent server from the srcdoc sandbox.
+ assert(isolation.parentBlocked&&isolation.storageBlocked&&isolation.corsBlocked&&isolation.apiSandboxed,JSON.stringify(isolation));
  // A sandbox is NOT a network firewall. Simple no-cors POST can reach loopback,
  // but media-type validation must prevent it from making an API mutation.
  const before=JSON.parse(fs.readFileSync(data)).users.length;
