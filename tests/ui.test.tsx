@@ -213,7 +213,7 @@ describe('Phase 3 preview checks (web runtime)', () => {
   it('edited code is what the preview shows, and the preview iframe is sandboxed', async () => {
     await rerenderWithHash('#demo=seeta'); // teammate with a built home/index.html
     await clickTab('Code');
-    await click('home/index.html');
+    await click('index.html');
     const editor = document.querySelector('textarea.editor') as HTMLTextAreaElement;
     expect(editor.value.length).toBeGreaterThan(0);
     setVal(editor, editor.value + '\n<p>EDITED-MARKER-123</p>');
@@ -612,7 +612,7 @@ describe('cross-session propagation (two open sessions)', () => {
     await api.call({ as: 'u-seeta', op: 'runBuild', args: { projectId: pid, taskId: task.id } });
     await A.clickCard('Habit Tracker');
     await A.clickTab('Code');
-    await A.click('home/index.html');
+    await A.click('index.html');
     const hl = host.querySelector('pre.editor-hl')!;
     expect(hl).not.toBeNull();
     expect(hl.querySelectorAll('span.tk-tag').length).toBeGreaterThan(2); // <html>, <body>, ...
@@ -683,7 +683,7 @@ describe('cross-session propagation (two open sessions)', () => {
     await B.click('Seeta');
     await B.clickCard('Habit Tracker');
     await B.clickTab('Code');
-    await B.click('home/index.html');
+    await B.click('index.html');
     // Seeta starts an unsaved edit in her file.
     const edB = () => hostB.querySelector('textarea.editor') as HTMLTextAreaElement;
     setVal(edB(), 'seeta unsaved draft');
