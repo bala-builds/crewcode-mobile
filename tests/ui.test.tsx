@@ -150,6 +150,7 @@ describe('Phase 1 owner journey and states', () => {
     await click('Ram');
     await clickCard('Habit Tracker');
     await click('Assign tasks (simulated)');
+    await click('Approve plan');
     await click('Back');
     await click('Switch');
     await click('Seeta');
@@ -396,6 +397,7 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     expect(text()).toContain('No tasks yet');
     expect(text()).not.toContain('Integration review');
     await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
+    await api.call({ as: 'u-ram', op: 'confirmPlanning', args: { projectId: pid, accept: true } });
     // Owner plants a mismatch in the teammate folder and the teammate submits the done task.
     await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'home/index.html', content: '<p>@shared BOGUS_NAME</p>' } });
     const seetaTask = () => api.state.projects.find((x) => x.id === pid)!.tasks.find((t) => t.assigneeId === 'u-seeta')!;
@@ -439,6 +441,7 @@ describe('real AI flow (own key, stubbed fetch - no live call)', () => {
   it('an own-key build calls the provider from the client and lands unlabeled-simulated output', async () => {
     const pid = (api.state as any).projects[0].id;
     await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
+    await api.call({ as: 'u-ram', op: 'confirmPlanning', args: { projectId: pid, accept: true } });
     await api.call({ as: 'u-seeta', op: 'setAiAccess', args: { projectId: pid, access: { kind: 'own', provider: 'Grok' } } });
     keyring.set('u-seeta', 'Grok', { key: 'TESTKEY-UI-1', endpointId: 'groq', model: 'test-model' });
     const realFetch = globalThis.fetch;
@@ -603,6 +606,7 @@ describe('cross-session propagation (two open sessions)', () => {
     await A.click('Ram');
     const pid = api.state.projects[0].id;
     await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
+    await api.call({ as: 'u-ram', op: 'confirmPlanning', args: { projectId: pid, accept: true } });
     const tid = api.state.projects[0].tasks.find((t) => t.assigneeId === 'u-seeta')!.id;
     await api.call({ as: 'u-seeta', op: 'runBuild', args: { projectId: pid, taskId: tid } });
 
@@ -637,5 +641,43 @@ describe('cross-session propagation (two open sessions)', () => {
     await B.click('CONTRACT.md');
     expect(edB().value).toContain('NEW_SHARED_NAME');
     act(() => rootB.unmount()); hostB.remove();
+  });
+});
+
+describe('owner plan gate (UI)', () => {
+  it('assign proposes only; the owner reassigns a feature and approves; discard creates nothing', async () => {
+    await click('Ram');
+    await clickCard('Habit Tracker');
+    const pid = api.state.projects[0].id;
+    // Hanuma joins so the split has two teammates.
+    await api.call({ as: 'u-hanuma', op: 'joinProject', args: { code: 'DEM-123', interests: ['backend'] } });
+    await click('Assign tasks (simulated)');
+    // Proposal card: tasks are not created yet.
+    expect(api.state.projects[0].tasks).toHaveLength(0);
+    expect(text()).toContain('Review the proposed split');
+    // Swap both features: settings/ defaults to Hanuma, so both selects change (a plan
+    // that leaves anyone taskless is rejected - that is the every-member rule working).
+    for (const [folder, uid] of [['home/', 'u-hanuma'], ['settings/', 'u-seeta']] as const) {
+      const sel = document.querySelector(`select[aria-label="Assign ${folder}"]`) as HTMLSelectElement;
+      expect(sel).toBeTruthy();
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(sel, uid);
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+    await click('Approve plan');
+    const tasks = api.state.projects[0].tasks;
+    expect(tasks.length).toBeGreaterThan(0);
+    expect(tasks.find((t) => t.folder === 'home/')!.assigneeId).toBe('u-hanuma');
+    expect(tasks.find((t) => t.folder === 'settings/')!.assigneeId).toBe('u-seeta');
+    expect(api.state.projects[0].messages.at(-1)!.text).toContain('Plan approved by the owner:');
+    // Discard path: re-propose, then discard - tasks stay as approved.
+    await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
+    expect(api.state.projects[0].proposedPlan).toBeTruthy();
+    await click('Back');
+    await clickCard('Habit Tracker'); // reload picks up the new proposal
+    await click('Discard');
+    expect(api.state.projects[0].proposedPlan).toBeUndefined();
+    expect(api.state.projects[0].tasks).toEqual(tasks);
   });
 });
