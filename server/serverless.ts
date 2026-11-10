@@ -38,6 +38,7 @@ export async function authStatus(deps: ServerlessDeps, cookieHeader?: string): P
     status: 200,
     body: {
       ok: true,
+      deployment: 'vercel-serverless',
       githubSignIn: deps.authCfg ? 'configured' : 'not-configured',
       session: session ? { githubLogin: session.login } : null,
       storage: deps.stateRepo ? 'GitHub private repo ' + deps.stateRepo.repo + ' (state.json)' : 'not-configured',
