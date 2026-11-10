@@ -73,9 +73,9 @@ describe('Phase 7 skill scoping', () => {
     if (!a.ok) return;
     const st = a.state;
     const pr = st.projects[0];
-    // Seeta's skill access follows Seeta's folders (frontend/ in the seeded plan)
-    expect(skillCanAccess(pr, 'u-seeta', 'code-review', 'read', 'frontend/index.html')).toBe(true);
-    expect(skillCanAccess(pr, 'u-seeta', 'code-review', 'read', 'backend/server.ts')).toBe(false);
+    // Seeta's skill access follows Seeta's folders (home/ in the seeded plan)
+    expect(skillCanAccess(pr, 'u-seeta', 'code-review', 'read', 'home/index.html')).toBe(true);
+    expect(skillCanAccess(pr, 'u-seeta', 'code-review', 'read', 'outside/server.ts')).toBe(false);
     expect(skillCanAccess(pr, 'u-seeta', 'code-review', 'write', 'CONTRACT.md')).toBe(false);
   });
 
@@ -85,12 +85,12 @@ describe('Phase 7 skill scoping', () => {
     expect(a.ok).toBe(true);
     if (!a.ok) return;
     let pr = a.state.projects[0];
-    expect(skillCanAccess(pr, 'u-seeta', 'code-review', 'read', 'frontend/index.html')).toBe(false);
+    expect(skillCanAccess(pr, 'u-seeta', 'code-review', 'read', 'home/index.html')).toBe(false);
     const ap = approveSkill(a.state, p.id, 'u-ram', 'code-review');
     expect(ap.ok).toBe(true);
     if (!ap.ok) return;
     pr = ap.state.projects[0];
-    expect(skillCanAccess(pr, 'u-seeta', 'code-review', 'read', 'frontend/index.html')).toBe(true);
+    expect(skillCanAccess(pr, 'u-seeta', 'code-review', 'read', 'home/index.html')).toBe(true);
   });
 
   it('removing a skill removes its access', () => {
@@ -100,7 +100,7 @@ describe('Phase 7 skill scoping', () => {
     const rm = removeSkill(a.state, p.id, 'u-ram', 'code-review');
     expect(rm.ok).toBe(true);
     if (!rm.ok) return;
-    expect(skillCanAccess(rm.state.projects[0], 'u-seeta', 'code-review', 'read', 'frontend/index.html')).toBe(false);
+    expect(skillCanAccess(rm.state.projects[0], 'u-seeta', 'code-review', 'read', 'home/index.html')).toBe(false);
   });
 });
 
