@@ -82,9 +82,10 @@ export function deterministicProvider(projectName: string): LlmProvider {
         return { ok: false, error: 'Use the local deterministic planner in tests; this provider only builds task files.' };
       }
       const message = `Simulated provider output for this task. Request received: ${request || '(none)'}. No live AI was called.`;
-      const files = folder === 'frontend/'
-        ? { [`${folder}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<p>Deterministic simulated build.</p>\n</body></html>\n` }
-        : { [`${folder}README.md`]: `# ${projectName}\n\nDeterministic simulated build output.\n` };
+      const files = {
+        [`${folder}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<p>Deterministic simulated build.</p>\n</body></html>\n`,
+        [`${folder}api.ts`]: `// Simulated backend for this feature.\nexport const routes = ['/health'];\n`,
+      };
       return { ok: true, text: JSON.stringify({ message, files: Object.entries(files).map(([path, content]) => ({ path, content })) }) };
     },
   };
@@ -94,8 +95,9 @@ export function deterministicProvider(projectName: string): LlmProvider {
 export function deterministicBuild(projectName: string, folder: string, prompt: string): BuildOutput {
   void prompt;
   const message = 'Simulated provider output for this task. No live AI was called.';
-  const files = folder === 'frontend/'
-    ? { [`${folder}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<p>Deterministic simulated build.</p>\n</body></html>\n` }
-    : { [`${folder}README.md`]: `# ${projectName}\n\nDeterministic simulated build output.\n` };
+  const files = {
+    [`${folder}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<p>Deterministic simulated build.</p>\n</body></html>\n`,
+    [`${folder}api.ts`]: `// Simulated backend for this feature.\nexport const routes = ['/health'];\n`,
+  };
   return { ok: true, message, files };
 }
