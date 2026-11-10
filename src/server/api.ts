@@ -166,7 +166,7 @@ export class Api {
       case 'setTaskStatus': return this.commit(S.setTaskStatus(st, args.projectId, u, args.taskId, args.status));
       case 'submitTaskForReview': return this.commit(S.submitTaskForReview(st, args.projectId, u, args.taskId));
       case 'runIntegrationReview': return this.commit(S.runIntegrationReview(st, args.projectId, u, args.taskId));
-      case 'acceptTaskMerge': return this.commit(S.acceptTaskMerge(st, args.projectId, u, args.taskId));
+      case 'acceptTaskMerge': return this.commit(S.acceptTaskMerge(st, args.projectId, u, args.taskId, { force: !!args.force }));
       case 'setAiAccess': return this.commit(S.setAiAccess(st, args.projectId, u, args.access));
       case 'setOwnerKeySharing': return this.commit(S.setOwnerKeySharing(st, args.projectId, u, !!args.on));
       case 'regenerateCode': return this.commit(S.regenerateCode(st, args.projectId, u));
