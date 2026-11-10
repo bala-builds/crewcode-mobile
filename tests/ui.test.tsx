@@ -359,7 +359,7 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     await click('Run check');
     expect(text()).toContain('changes requested');
     expect(text()).toContain('BOGUS_NAME in frontend/index.html');
-    const mergeBtn = btn('Merge') as HTMLButtonElement;
+    const mergeBtn = btn('Merge into main') as HTMLButtonElement;
     expect(mergeBtn.disabled).toBe(true);
     // Fixing the file and re-running the check clears the flag and the merge goes through.
     await api.call({ as: 'u-ram', op: 'saveFile', args: { projectId: pid, path: 'frontend/index.html', content: '<p>@shared PROJECT_NAME</p>' } });
@@ -369,8 +369,12 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     await clickTab('Tasks');
     await click('Run check');
     expect(text()).not.toContain('BOGUS_NAME');
-    await click('Merge');
-    expect(text()).toContain('merged');
+    await click('Merge into main');
+    expect(text()).toContain('Merged into main/frontend/');
+    // The accepted work now lives in the owner's main folder.
+    await clickTab('Code');
+    expect(text()).toContain('main/frontend/index.html');
+    await clickTab('Tasks');
     // Teammates never see the owner review card.
     await click('Back');
     await click('Switch');
