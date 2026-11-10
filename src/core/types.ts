@@ -65,6 +65,8 @@ export interface ChatMessage {
   kind: 'prompt' | 'ai_plan' | 'ai_build' | 'ai_error' | 'system';
   text: string;
   files?: string[]; // paths touched by an ai_build message
+  /** Per-file line counts for an ai_build message (prefix/suffix-trim diff vs the previous content). */
+  diff?: Record<string, { added: number; removed: number }>;
   /** false only for messages produced by a real provider call; simulated is the default */
   simulated?: boolean;
   at: number;
