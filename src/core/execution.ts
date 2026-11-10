@@ -20,6 +20,7 @@ export function buildTaskPrompt(
         `Write only inside ${task.folder}.`,
         'Return JSON only: {"message": string, "files": [{"path": string, "content": string}]}.',
         'Every file path must be a relative path inside the assigned folder.',
+        'In "message", write a short structured summary: one line saying what was built, then 2 to 5 short bullets. Plain words, no headings, no walls of text.',
       ].join('\n'),
     },
     {
@@ -81,7 +82,7 @@ export function deterministicProvider(projectName: string): LlmProvider {
       if (turns[0]?.content.includes('Divide the work')) {
         return { ok: false, error: 'Use the local deterministic planner in tests; this provider only builds task files.' };
       }
-      const message = `Simulated provider output for this task. Request received: ${request || '(none)'}. No live AI was called.`;
+      const message = `Simulated build. No live AI was called.\n\n- Wrote the feature page (index.html)\n- Wrote the API route (api.ts)\n\nRequest received: ${request || '(none)'}.`;
       const files = {
         [`${folder}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<p>Deterministic simulated build.</p>\n<p id="api">API: loading...</p>\n<script>fetch('/api/v1/health').then(r=>r.json()).then(j=>{document.getElementById('api').textContent='API says: '+j.status;}).catch(()=>{document.getElementById('api').textContent='API: not reachable';});</script>\n</body></html>\n`,
         // Plain-JS route module (no TS-only syntax, no imports): Preview runs it in a sandbox.
@@ -95,7 +96,7 @@ export function deterministicProvider(projectName: string): LlmProvider {
 /** Synchronous deterministic build used by the local test-identity API. */
 export function deterministicBuild(projectName: string, folder: string, prompt: string): BuildOutput {
   void prompt;
-  const message = 'Simulated provider output for this task. No live AI was called.';
+  const message = 'Simulated build. No live AI was called.\n\n- Wrote the feature page (index.html)\n- Wrote the API route (api.ts)';
   const files = {
     [`${folder}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<p>Deterministic simulated build.</p>\n<p id="api">API: loading...</p>\n<script>fetch('/api/v1/health').then(r=>r.json()).then(j=>{document.getElementById('api').textContent='API says: '+j.status;}).catch(()=>{document.getElementById('api').textContent='API: not reachable';});</script>\n</body></html>\n`,
     // Plain-JS route module (no TS-only syntax, no imports): Preview runs it in a sandbox.
