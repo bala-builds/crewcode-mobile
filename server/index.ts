@@ -31,7 +31,7 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const session = getSession(sessionIdFromCookie(req.headers.cookie));
   if (req.method === 'GET' && url.pathname === '/api/auth/status') {
-    send(res, { status: 200, body: { ok: true, githubSignIn: authCfg ? 'configured' : 'not-configured', session: session ? { githubLogin: session.login } : null, ...storageStatus(storage) } });
+    send(res, { status: 200, body: { ok: true, deployment: 'dev', githubSignIn: authCfg ? 'configured' : 'not-configured', session: session ? { githubLogin: session.login } : null, ...storageStatus(storage) } });
     return;
   }
   if (req.method === 'GET' && url.pathname === '/api/auth/github') { send(res, startGithubSignIn(authCfg)); return; }
