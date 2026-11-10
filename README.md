@@ -5,13 +5,15 @@ A chat-first app where a team builds software together. The owner writes a maste
 ## Status: prototype, not the finished product
 **Real:** the rules. One permission function (`src/core/permissions.ts`) decides who can read or write which path. Team codes, interests, task planning, shared contract checks, owner-AI sharing, skill approval and local save are all tested (`npm test`).
 
-**Simulated:** all AI answers and builds. The skills/MCP catalog uses placeholder names (the local tools themselves really run).
+**Simulated:** AI answers and builds unless you add your own API key in the AI screen. The skills/MCP catalog uses placeholder names (the local tools themselves really run).
+
+**Real with your own key:** all five named providers (Gemini, NVIDIA, Grok, Claude, GPT) have live adapters to their official endpoints; the key stays in memory on your device and calls go straight from your device to the provider. "Grok" asks you to pick xAI Grok or Groq (the name covers both; nothing assumed). Teammates on the owner's model still get simulated answers: real owner-key sharing needs server-side key storage, which waits for sign-in.
 
 **Real:** accepted work merges into an owner-only `main/` tree (`main/<folder>/<name>`), gated by the contract check; a merged copy the owner edited is never silently overwritten.
 
 **Real:** the preview runs the actual web file with scripts on in an opaque-origin iframe (no access to the app or its storage; network not blocked; not a secure runtime for untrusted code), and local tools run through a genuine MCP stdio server in a permission-restricted process.
 
-**Not built:** real AI providers (Phases 5-6, needs keys the owner has not approved), real storage (Phase 9, Drive wiring waits for sign-in), and authentication (Phase 11, built last). Provider names Gemini, NVIDIA, Grok, Claude and GPT are placeholders and are not verified integrations.
+**Not built:** owner-key sharing with a real key (needs server-side key storage, approval-gated), real storage (Phase 9, Drive wiring waits for sign-in), and authentication (Phase 11, built last). No live provider call has been made from this repo; adapter tests use a fake fetch. The skills/MCP catalog content is placeholder (O8).
 
 ## Important limits
 - No real sign-in. You pick a test identity (Ram, Seeta, Hanuma, Outsider) or register a name. This is not a login.
