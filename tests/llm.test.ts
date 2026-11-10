@@ -47,6 +47,9 @@ describe('provider adapters (fake fetch only; no live call is made in this repo)
     expect(seen.u).toBe('https://api.anthropic.com/v1/messages');
     expect(seen.i.headers['x-api-key']).toBe('SECRET-KEY-7');
     expect(seen.i.body).not.toContain('SECRET-KEY-7');
+    // Documented Anthropic browser opt-in (platform.claude.com/docs/en/manage-claude/authentication):
+    // direct browser calls are accepted only with this header; ZDR/Compliance orgs are still refused with a 401.
+    expect(seen.i.headers['anthropic-dangerous-direct-browser-access']).toBe('true');
     const body = JSON.parse(seen.i.body);
     expect(body.system).toBe('sys');
     expect(body.messages).toEqual(turns);
