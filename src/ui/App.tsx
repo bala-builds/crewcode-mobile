@@ -479,7 +479,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
           const result = res.ok ? parseBuildJson(res.text, task.folder) : res;
           await actOp('applyTaskRun', { projectId: pid, taskId: id, result, simulated: false }, pid);
         }}
-        onCancel={(id: string) => actOp('cancelTaskRun', { projectId: pid, taskId: id }, pid)} openCode={(f: string) => { setOpen(f); setTab('code'); }} err={err} />}
+        onCancel={(id: string) => actOp('cancelTaskRun', { projectId: pid, taskId: id }, pid)} openCode={(f: string) => { setOpen(f); setTab('code'); }} goTab={setTab} err={err} />}
       {tab === 'code' && <CodeView p={p} open={open} setOpen={setOpen} editKey={editKey} onSave={(path, c, rev) => actOp('saveFile', { projectId: pid, path, content: c, baseRev: rev }, pid)} reload={() => load()} err={err} clearErr={clearErr} />}
       {tab === 'preview' && <PreviewView p={p} />}
       {tab === 'tasks' && <TasksView p={p} user={me.id} nameOf={nameOf} onStatus={(id, s) => actOp('setTaskStatus', { projectId: pid, taskId: id, status: s }, pid)} actOp={(n, a) => actOp(n, a, pid)} err={err} />}
@@ -527,7 +527,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   );
 }
 
-function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, realAi, onAssign, onBuild, onCancel, openCode, onConfirm, err }: Record<string, any>) {
+function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, realAi, onAssign, onBuild, onCancel, openCode, onConfirm, goTab, err }: Record<string, any>) {
   const [reassign, setReassign] = useState<Record<number, string>>({});
   const myTask = !owner ? (tasks.find((t: any) => t.id === thread) ?? tasks[0]) : tasks.find((t: any) => t.id === thread);
   return (
@@ -571,16 +571,30 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, real
             <div key={m.id} className={'bubble ' + (mine ? 'me' : ai ? 'ai' : 'other') + (m.kind === 'ai_error' ? ' error' : '')}>
               {!mine && <div className="who">{nameOf(m.authorId)}{m.kind === 'ai_build' && m.simulated !== false ? ' - simulated build' : ''}</div>}
               {m.text}
-              {m.kind === 'ai_build' && m.files?.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  {m.files.map((f: string) => (
-                    <div key={f} className="row spread" style={{ marginTop: 4 }}>
-                      <button className="small" onClick={() => openCode(f)}>{'</>'} {f}</button>
-                      {m.diff?.[f] && <span className="muted">+{m.diff[f].added} -{m.diff[f].removed}</span>}
+              {m.kind === 'ai_build' && m.files?.length > 0 && (() => {
+                const totals: { added: number; removed: number } = Object.values((m.diff ?? {}) as Record<string, { added: number; removed: number }>).reduce((a, d) => ({ added: a.added + d.added, removed: a.removed + d.removed }), { added: 0, removed: 0 });
+                const rows = m.files.map((f: string) => (
+                  <div key={f} className="row spread" style={{ marginTop: 4 }}>
+                    <button className="small" onClick={() => openCode(f)}>{'</>'} {f}</button>
+                    {m.diff?.[f] && <span className="muted">+{m.diff[f].added} -{m.diff[f].removed}</span>}
+                  </div>
+                ));
+                return (
+                  <div style={{ marginTop: 8 }}>
+                    {m.files.length > 3 ? (
+                      <details className="buildlog">
+                        <summary>{m.files.length} changed files ({totals.added > 0 || totals.removed > 0 ? `+${totals.added} -${totals.removed}` : 'no line counts'})</summary>
+                        {rows}
+                      </details>
+                    ) : rows}
+                    <div className="row wrap" style={{ marginTop: 6 }}>
+                      <button className="small" onClick={() => openCode(m.files[0])}>Open Code</button>
+                      <button className="small" onClick={() => goTab('preview')}>Open Preview</button>
+                      <button className="small" onClick={() => goTab('tasks')}>View Tasks</button>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                );
+              })()}
               {m.kind === 'ai_error' && myTask && <div style={{ marginTop: 8 }}><button className="small" onClick={() => onBuild(myTask.id, false)}>Retry</button></div>}
             </div>
           );
@@ -703,7 +717,9 @@ function PreviewView({ p }: { p: ProjectView }) {
     window.addEventListener('message', route);
     return () => window.removeEventListener('message', route);
   }, [path, apiSrc]);
-  if (!path) return <div className="screen"><div className="empty">Nothing to preview yet. Run a simulated build for a frontend task first.</div></div>;
+  const lb = [...(p.messages ?? [])].reverse().find((m: any) => m.kind === 'ai_build');
+  const lastBuildLine = lb ? `Last build: ${new Date(lb.at).toLocaleString()} - ${lb.files?.length ?? 0} file(s) changed${lb.simulated !== false ? ' (simulated)' : ''}` : 'No builds yet.';
+  if (!path) return <div className="screen"><div className="empty">Nothing to preview yet. Run a simulated build for a frontend task first.</div><div className="muted" style={{ marginTop: 8 }}>{lastBuildLine}</div></div>;
   return (
     <div className="screen">
       <div className="note">Preview of {path}: the page runs with scripts on in an opaque-origin iframe - no access to the app or its storage.{apiSrc ? ' /api calls are answered by the feature api.ts running in a second sandbox: plain-JS route modules only - no packages, no database, no other languages.' : ' No api.ts next to it, so /api calls get nothing.'} Network is otherwise not blocked. Not a secure runtime for untrusted code.</div>
@@ -711,6 +727,7 @@ function PreviewView({ p }: { p: ProjectView }) {
         {readable.length > 1 && readable.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => setSel(f)}>{f}</button>)}
         <button className="chip small" onClick={() => setNonce((n) => n + 1)}>Refresh</button>
         <span className="muted">Runs the project's saved files, not a live deploy.</span>
+        <span className="muted">{lastBuildLine}</span>
       </div>
       <iframe key={'pg' + nonce} title="Preview" sandbox="allow-scripts" srcDoc={buildPreviewDoc(p.files[path])} ref={pageRef} />
       {apiSrc && <iframe key={'be' + nonce} title="Backend runtime" sandbox="allow-scripts" srcDoc={buildBackendDoc(apiSrc)} ref={beRef} style={{ display: 'none' }} />}
@@ -1033,4 +1050,4 @@ function DiscoverView() {
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
     </div>
   );
-                                                                   }
+}
