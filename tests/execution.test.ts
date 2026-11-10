@@ -3,8 +3,8 @@ import { buildTaskPrompt, parseBuildJson, deterministicBuild, deterministicProvi
 import { seedState, createProject, joinProject, assignTasks, runBuild, cancelTaskRun, setAiAccess } from '../src/core/store';
 import { Api } from '../src/server/api';
 
-const task = { id: 't1', title: 'Build the screens', detail: 'Make the main screens.', assigneeId: 'u-seeta', folder: 'frontend/', status: 'todo' as const };
-const project = { name: 'Scope App', files: { 'CONTRACT.md': '@shared API_BASE', 'frontend/index.html': '<h1>old</h1>', 'backend/secret.ts': 'hidden' } };
+const task = { id: 't1', title: 'Build Home page', detail: 'Make the main screens.', assigneeId: 'u-seeta', folder: 'home/', status: 'todo' as const };
+const project = { name: 'Scope App', files: { 'CONTRACT.md': '@shared API_BASE', 'home/index.html': '<h1>old</h1>', 'settings/secret.ts': 'hidden' } };
 
 describe('provider execution boundary', () => {
   it('task prompt includes contract and folder files but no other folders', () => {
@@ -14,23 +14,23 @@ describe('provider execution boundary', () => {
     expect(text).not.toContain('hidden');
   });
   it('rejects malformed or out-of-folder build output without partial files', () => {
-    expect(parseBuildJson('no', 'frontend/').ok).toBe(false);
-    expect(parseBuildJson('{"message":"x","files":[]}', 'frontend/').ok).toBe(true);
+    expect(parseBuildJson('no', 'home/').ok).toBe(false);
+    expect(parseBuildJson('{"message":"x","files":[]}', 'home/').ok).toBe(true);
     for (const raw of [
-      '{"message":"x","files":[{"path":"backend/x.ts","content":"no"}]}',
-      '{"message":"x","files":[{"path":"frontend/../secret","content":"no"}]}',
-      '{"message":"x","files":[{"path":"frontend/x.ts"}]}',
-    ]) expect(parseBuildJson(raw, 'frontend/').ok).toBe(false);
+      '{"message":"x","files":[{"path":"settings/x.ts","content":"no"}]}',
+      '{"message":"x","files":[{"path":"home/../secret","content":"no"}]}',
+      '{"message":"x","files":[{"path":"home/x.ts"}]}',
+    ]) expect(parseBuildJson(raw, 'home/').ok).toBe(false);
   });
   it('deterministic build stays in folder and is clearly simulated', () => {
-    const out = deterministicBuild('App', 'frontend/', 'make it');
+    const out = deterministicBuild('App', 'home/', 'make it');
     expect(out.ok).toBe(true);
-    if (out.ok) { expect(out.message).toContain('No live AI'); expect(Object.keys(out.files)).toEqual(['frontend/index.html']); }
+    if (out.ok) { expect(out.message).toContain('No live AI'); expect(Object.keys(out.files)).toEqual(['home/index.html', 'home/api.ts']); }
   });
   it('provider-facing deterministic provider returns parseable output', async () => {
-    const out = await deterministicProvider('App').complete([{ role: 'user', content: 'Assigned folder: frontend/\n\n## Request\nhi' }]);
+    const out = await deterministicProvider('App').complete([{ role: 'user', content: 'Assigned folder: home/\n\n## Request\nhi' }]);
     expect(out.ok).toBe(true);
-    if (out.ok) expect(parseBuildJson(out.text, 'frontend/').ok).toBe(true);
+    if (out.ok) expect(parseBuildJson(out.text, 'home/').ok).toBe(true);
   });
 });
 
@@ -50,11 +50,11 @@ describe('task run state', () => {
     expect(failed.state.projects.find((x: any) => x.id === pid)!.messages.at(-1)?.text).toContain('Provider failed.');
     const stopped = cancelTaskRun(failed.state, pid, 'u-seeta', tid);
     expect(stopped.ok).toBe(false); // cannot stop after failure
-    const again = runBuild(failed.state, pid, 'u-seeta', tid, { prompt: 'hello', build: (_t, _p, prompt) => { seenPrompt = prompt; return { ok: true, message: 'done', files: { 'frontend/a.txt': 'x' } }; } });
+    const again = runBuild(failed.state, pid, 'u-seeta', tid, { prompt: 'hello', build: (_t, _p, prompt) => { seenPrompt = prompt; return { ok: true, message: 'done', files: { 'runs/a.txt': 'x' } }; } });
     if (!again.ok) throw Error();
     expect(seenPrompt).toBe('hello');
     expect(again.state.projects.find((x: any) => x.id === pid)!.tasks[0].run).toBe('idle');
-    expect(again.state.projects.find((x: any) => x.id === pid)!.files['frontend/a.txt']).toBe('x');
+    expect(again.state.projects.find((x: any) => x.id === pid)!.files['runs/a.txt']).toBe('x');
   });
 });
 
@@ -80,12 +80,12 @@ describe('async run boundary (delayed provider)', () => {
     expect(api.state.projects.find((x: any) => x.id === pid)!.tasks.find((t: any) => t.id === tid)!.run).toBe('thinking');
     const cancel = api.call({ as: 'u-seeta', op: 'cancelTaskRun', args: { projectId: pid, taskId: tid } });
     expect(cancel.ok).toBe(true);
-    release({ ok: true, message: 'late output', files: { 'frontend/late.txt': 'should not land' } });
+    release({ ok: true, message: 'late output', files: { 'home/late.txt': 'should not land' } });
     const done = await run;
     expect(done.ok).toBe(true);
     expect((done as any).data.discarded).toBe(true);
     const p = api.state.projects.find((x: any) => x.id === pid)!;
-    expect(p.files['frontend/late.txt']).toBeUndefined(); // no late writes
+    expect(p.files['home/late.txt']).toBeUndefined(); // no late writes
     expect(p.messages.some((m: any) => m.text.includes('late output'))).toBe(false);
     expect(p.tasks.find((t: any) => t.id === tid)!.run).toBe('failed'); // stopped state stands
   });
