@@ -43,6 +43,8 @@ label { display: block; font-weight: 600; font-size: 14px; margin: 12px 0 6px; }
 .bubble.error { background: var(--errbg); border-color: #f2b8b5; }
 .who { font-size: 12px; color: var(--ink2); margin-bottom: 2px; }
 .composer { display: flex; gap: 8px; padding: 8px 12px; background: var(--card); border-top: 1px solid var(--line); }
+.composer { flex-wrap: wrap; }
+.composer > .card, .composer > .muted { flex-basis: 100%; }
 .composer textarea { min-height: 44px; height: 44px; max-height: 120px; resize: none; }
 .files { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
 .files button { white-space: nowrap; flex: none; }
