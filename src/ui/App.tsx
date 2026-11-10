@@ -4,7 +4,7 @@ import { PROVIDER_LABELS, ROOT_FILES } from '../core/types';
 import { PROVIDERS, PROVIDER_ENDPOINTS, keyring, maskKey, providerFor } from '../core/providers';
 import { buildTaskPrompt, parseBuildJson } from '../core/execution';
 import { planWithProvider } from '../core/planner';
-import { searchCatalog, CATALOG, localRunnable } from '../core/skills';
+import { searchCatalog, CATALOG, localRunnable, type SkillItem } from '../core/skills';
 import { buildPreviewDoc, buildBackendDoc, backendPathFor } from '../core/preview';
 import { integrationCheck, reviewFingerprint } from '../core/contract';
 import { driveStatus } from '../core/drive';
@@ -18,7 +18,7 @@ import { HttpClient, op, type ClientData, type ProjectView } from './client';
 
 type Screen =
   | { name: 'welcome' } | { name: 'home' } | { name: 'create' } | { name: 'invite'; pid: string }
-  | { name: 'join' } | { name: 'ai'; pid: string } | { name: 'workspace'; pid: string };
+  | { name: 'join' } | { name: 'ai'; pid: string } | { name: 'workspace'; pid: string } | { name: 'discover' };
 type Tab = 'chat' | 'code' | 'preview' | 'tasks' | 'files' | 'team' | 'settings';
 type Me = { id: string; name: string };
 type UserInfo = { id: string; name: string };
@@ -59,6 +59,7 @@ function LeftRail({ me, projects, currentPid, go, enter, signOut }: { me: Me; pr
       <div className="rail-brand">CrewCode</div>
       <button className="rail-nav" onClick={() => go({ name: 'home' })}>Home</button>
       <button className="rail-nav" onClick={() => go({ name: 'home' })}>Projects</button>
+      <button className="rail-nav" onClick={() => go({ name: 'discover' })}>Discover</button>
       <button className="rail-nav" onClick={() => go({ name: 'create' })}>+ Create project</button>
       <button className="rail-nav" onClick={() => go({ name: 'join' })}>+ Join project</button>
       <div className="rail-sect">Recent projects</div>
@@ -203,6 +204,7 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
           <LeftRail me={me} projects={projects} currentPid={screen.name === 'workspace' ? screen.pid : null} go={go} enter={enterProject} signOut={() => { setMe(null); setView(null); go({ name: 'welcome' }); }} />
           <div className="shell-main">
       {screen.name === 'home' && <Home me={me} projects={projects} refresh={() => refreshFor(me.id)} go={go} enter={enterProject} signOut={() => { setMe(null); setView(null); go({ name: 'welcome' }); }} />}
+      {screen.name === 'discover' && <DiscoverView />}
       {me && screen.name === 'create' && <Create go={go} create={async (name, prd, ins) => {
         const r = await op(cli, me.id, 'createProject', { name, prd, instructions: ins });
         if (!r.ok) return r.error;
@@ -877,8 +879,40 @@ function SettingsView({ p, me, go, actOp }: { p: ProjectView; me: Me; go: (s: Sc
         <button className="chip" disabled title="Not implemented yet">Unavailable</button></div></div>}
       <div className="card">
         <strong>Sign-in</strong>
-        <div className="muted" style={{ marginTop: 6 }}>Test identities only right now. Real GitHub sign-in is being connected (app registered, not yet wired in).</div>
+        <GithubSignIn />
       </div>
+    </div>
+  );}
+
+// Real GitHub OAuth, gated on what the server actually reports: the button is
+// live only when the server says its client id/secret are configured. Anything
+// else is shown as unavailable, never as a working sign-in.
+function GithubSignIn() {
+  const [state, setState] = useState<'checking' | 'configured' | 'unavailable'>('checking');
+  const [session, setSession] = useState<string | null>(null);
+  const check = () => {
+    fetch('/api/auth/status').then((r) => r.json()).then((d) => {
+      setState(d && d.githubSignIn === 'configured' ? 'configured' : 'unavailable');
+      setSession(d && d.session ? String(d.session.githubLogin) : null);
+    }).catch(() => { setState('unavailable'); setSession(null); });
+  };
+  useEffect(() => { check(); }, []);
+  const logout = async () => { try { await fetch('/api/auth/logout', { method: 'POST' }); } catch { /* offline */ } check(); };
+  return (
+    <div style={{ marginTop: 6 }}>
+      {session ? (
+        <>
+          <div className="muted">Signed in with GitHub as {session}. Your actions now use that account; test identities stay available for demos.</div>
+          <div className="row" style={{ marginTop: 8 }}><button className="chip" onClick={logout}>Log out of GitHub</button></div>
+        </>
+      ) : (
+        <>
+          <div className="muted">Test identities only right now. GitHub sign-in is wired on the server but not yet verified end-to-end with GitHub.</div>
+          {state === 'checking' && <div className="muted" style={{ marginTop: 6 }}>Checking the server...</div>}
+          {state === 'configured' && <div className="row" style={{ marginTop: 8 }}><a className="chip" href="/api/auth/github">Sign in with GitHub</a></div>}
+          {state === 'unavailable' && <div className="row" style={{ marginTop: 8 }}><button className="chip" disabled title="The dev server has no GitHub client configured">Not connected</button></div>}
+        </>
+      )}
     </div>
   );
 }
@@ -927,3 +961,43 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
     </div></div>
   );
 }
+
+// Discover: the browsable catalogue behind the rail item. Same honest data as
+// the project's tools sheet, grouped into the three brief categories. Browse
+// only - adding stays project-scoped in the tools sheet beside the composer.
+// Nothing here is a live external connection; each card says what it really is.
+function DiscoverView() {
+  const [q, setQ] = useState('');
+  const items = useMemo(() => searchCatalog(q), [q]);
+  const groups: { key: SkillItem['kind']; title: string }[] = [
+    { key: 'skill', title: 'Skills' },
+    { key: 'mcp', title: 'MCP servers' },
+    { key: 'prebuilt', title: 'Open-source prebuilt components' },
+  ];
+  const stateTag = (it: SkillItem) => it.hosted ? 'Hosted service - information only' : localRunnable(it) ? 'Runs locally in this build' : 'Needs a connection - not available in this build';
+  return (
+    <div className="screen">
+      <h2>Discover</h2>
+      <div className="note">The starter catalogue. Every item says what it really is: local tools run here, everything else is labelled with what it would need. Nothing on this page is a live external connection - adding a tool to a project happens from the tools button beside the chat composer.</div>
+      <input aria-label="Search Discover catalogue" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search skills, MCP servers, prebuilt" />
+      {groups.map((g) => {
+        const list = items.filter((i) => i.kind === g.key);
+        if (list.length === 0) return null;
+        return (
+          <div key={g.key}>
+            <h3>{g.title}</h3>
+            {list.map((it) => (
+              <div key={it.id} className="card">
+                <div className="row spread"><strong>{it.label}</strong><span className="tag">{stateTag(it)}</span></div>
+                <p className="muted">{it.summary}</p>
+                <div className="muted">Requested access: {it.permissions.join('; ')}</div>
+                <div className="muted" style={{ marginTop: 6 }}>{it.hosted || !localRunnable(it) ? 'Cannot be enabled in this build.' : 'Can be added to a project from the chat tools sheet.'}</div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+      {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
+    </div>
+  );
+      }
