@@ -8,6 +8,7 @@ import { createRoot, Root } from 'react-dom/client';
 import { App } from '../src/ui/App';
 import { Api } from '../src/server/api';
 import { DirectClient } from '../src/ui/client';
+import { keyring } from '../src/core/providers';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -382,6 +383,29 @@ describe('Phase 8 UI: conflict review and owner backup', () => {
     await clickCard('Habit Tracker');
     await clickTab('Tasks');
     expect(text()).not.toContain('Integration review');
+  });
+});
+
+describe('real AI flow (own key, stubbed fetch - no live call)', () => {
+  it('an own-key build calls the provider from the client and lands unlabeled-simulated output', async () => {
+    const pid = (api.state as any).projects[0].id;
+    await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
+    await api.call({ as: 'u-seeta', op: 'setAiAccess', args: { projectId: pid, access: { kind: 'own', provider: 'Grok' } } });
+    keyring.set('u-seeta', 'Grok', { key: 'TESTKEY-UI-1', endpointId: 'groq', model: 'test-model' });
+    const realFetch = globalThis.fetch;
+    let seen: any;
+    (globalThis as any).fetch = async (u: any, i: any) => { seen = { u, i }; return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: JSON.stringify({ message: 'Built the streak screen.', files: [{ path: 'frontend/index.html', content: '<h1>Real build</h1>' }] }) } }] }) }; };
+    try {
+      await click('Seeta');
+      await clickCard('Habit Tracker');
+      await click('Run build');
+      await flush(); await flush(); await flush();
+      expect(seen.u).toBe('https://api.groq.com/openai/v1/chat/completions');
+      expect(seen.i.headers.authorization).toBe('Bearer TESTKEY-UI-1');
+      expect(text()).toContain('Built the streak screen.');
+      expect(text()).not.toContain('Simulated build. Built the streak screen.');
+      expect(api.state.projects[0].files['frontend/index.html']).toBe('<h1>Real build</h1>');
+    } finally { (globalThis as any).fetch = realFetch; keyring.clear(); }
   });
 });
 
