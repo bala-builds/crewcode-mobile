@@ -83,8 +83,9 @@ export function deterministicProvider(projectName: string): LlmProvider {
       }
       const message = `Simulated provider output for this task. Request received: ${request || '(none)'}. No live AI was called.`;
       const files = {
-        [`${folder}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<p>Deterministic simulated build.</p>\n</body></html>\n`,
-        [`${folder}api.ts`]: `// Simulated backend for this feature.\nexport const routes = ['/health'];\n`,
+        [`${folder}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<p>Deterministic simulated build.</p>\n<p id="api">API: loading...</p>\n<script>fetch('/api/v1/health').then(r=>r.json()).then(j=>{document.getElementById('api').textContent='API says: '+j.status;}).catch(()=>{document.getElementById('api').textContent='API: not reachable';});</script>\n</body></html>\n`,
+        // Plain-JS route module (no TS-only syntax, no imports): Preview runs it in a sandbox.
+        [`${folder}api.ts`]: `// Simulated backend for this feature.\nexport async function handle({ method, path }) {\n  if (path === '/api/v1/health') return { status: 200, body: { status: 'ok' } };\n  return { status: 404, body: { error: 'not found' } };\n}\n`,
       };
       return { ok: true, text: JSON.stringify({ message, files: Object.entries(files).map(([path, content]) => ({ path, content })) }) };
     },
@@ -96,8 +97,9 @@ export function deterministicBuild(projectName: string, folder: string, prompt: 
   void prompt;
   const message = 'Simulated provider output for this task. No live AI was called.';
   const files = {
-    [`${folder}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<p>Deterministic simulated build.</p>\n</body></html>\n`,
-    [`${folder}api.ts`]: `// Simulated backend for this feature.\nexport const routes = ['/health'];\n`,
+    [`${folder}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<p>Deterministic simulated build.</p>\n<p id="api">API: loading...</p>\n<script>fetch('/api/v1/health').then(r=>r.json()).then(j=>{document.getElementById('api').textContent='API says: '+j.status;}).catch(()=>{document.getElementById('api').textContent='API: not reachable';});</script>\n</body></html>\n`,
+    // Plain-JS route module (no TS-only syntax, no imports): Preview runs it in a sandbox.
+        [`${folder}api.ts`]: `// Simulated backend for this feature.\nexport async function handle({ method, path }) {\n  if (path === '/api/v1/health') return { status: 200, body: { status: 'ok' } };\n  return { status: 404, body: { error: 'not found' } };\n}\n`,
   };
   return { ok: true, message, files };
 }
