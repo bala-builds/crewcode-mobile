@@ -223,6 +223,13 @@ describe('Phase 3 preview checks (web runtime)', () => {
     expect(frame).toBeTruthy();
     expect(frame.getAttribute('sandbox')).toBe('allow-scripts'); // scripts only, no same-origin, no app data
     expect(frame.getAttribute('srcdoc')).toContain('EDITED-MARKER-123');
+    // Full-stack preview: the shim is injected ahead of the page, and the feature's api.ts
+    // runs in a second hidden sandbox iframe.
+    expect(frame.getAttribute('srcdoc')).toContain('__cc');
+    const be = document.querySelector('iframe[title="Backend runtime"]') as HTMLIFrameElement;
+    expect(be).toBeTruthy();
+    expect(be.getAttribute('sandbox')).toBe('allow-scripts');
+    expect(be.getAttribute('srcdoc')).toContain('export async function handle');
   });
 
   it('teammate preview lists only files they can read', async () => {
