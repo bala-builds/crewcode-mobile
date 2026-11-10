@@ -58,7 +58,12 @@ export class Api {
     // deterministic local provider; a live provider stays approval-gated and is not wired here.
     private buildProvider: AsyncBuildProvider = async (t, pr, prompt) => deterministicBuild(pr.name, t.folder, prompt),
     private planProvider: AsyncPlanner = async (pr, users) => ({ ok: true, plan: planTasks(pr, users) }),
-  ) {}
+  ) {
+    // Older persisted states (and any hand-built fixtures) may predate the version counter.
+    // Without a numeric baseline, a client's first poll adopts the current version instead of
+    // noticing it changed, and open sessions miss every change made since they loaded.
+    this.state.version = this.state.version ?? 0;
+  }
 
   /**
    * Async boundary for task runs (used by the HTTP server): start marks the task thinking,
