@@ -781,6 +781,20 @@ function TasksView({ p, user, nameOf, onStatus, actOp, err }: { p: ProjectView; 
           <p className="muted">{t.detail}</p>
           <div className="muted">Assigned to {nameOf(t.assigneeId)}. Folder {t.folder}</div>
           {t.deps?.length ? <div className="muted">Depends on: {t.deps.join(', ')} - merge those first.</div> : null}
+          <div className="row wrap" style={{ marginTop: 8, alignItems: 'center' }}>
+            <label className="muted">Priority
+              <select aria-label={'Priority for ' + t.title} value={t.priority ?? ''} onChange={(e) => actOp('setTaskDetails', { projectId: p.id, taskId: t.id, priority: e.target.value || null })}>
+                <option value=''>none</option><option value='low'>low</option><option value='medium'>medium</option><option value='high'>high</option>
+              </select>
+            </label>
+            <label className="muted">Due
+              <input aria-label={'Due date for ' + t.title} type='date' value={t.due ?? ''} onChange={(e) => actOp('setTaskDetails', { projectId: p.id, taskId: t.id, due: e.target.value || null })} />
+            </label>
+          </div>
+          <details style={{ marginTop: 6 }}>
+            <summary className="muted">Acceptance criteria{t.acceptance ? '' : ' (none set)'}</summary>
+            <textarea aria-label={'Acceptance criteria for ' + t.title} defaultValue={t.acceptance ?? ''} placeholder='What must be true for this task to be accepted' rows={2} onBlur={(e) => { if (e.target.value !== (t.acceptance ?? '')) actOp('setTaskDetails', { projectId: p.id, taskId: t.id, acceptance: e.target.value }); }} />
+          </details>
           <div className="row wrap" style={{ marginTop: 8 }}>{(['todo', 'in_progress', 'done'] as const).map((s) => <button key={s} className={'chip small' + (t.status === s ? ' on' : '')} onClick={() => onStatus(t.id, s)}>{s.replace('_', ' ')}</button>)}</div>
           {reviewLabel(t)}
           {t.status === 'done' && t.review?.state !== 'accepted' && (
@@ -1010,4 +1024,4 @@ function DiscoverView() {
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
     </div>
   );
-      }
+}
