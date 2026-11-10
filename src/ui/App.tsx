@@ -211,7 +211,7 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
         ? 'AI answers are simulated until you add your own key; previews run real web files.'
         : 'Test identities only. Not a login. Real sign-in is built last. AI answers are simulated until you add your own key; previews run real web files.'}</div>
       {err && screen.name !== 'workspace' && <div style={{ padding: 16 }}><Err text={err} /><button onClick={() => window.location.reload()}>Retry connection</button></div>}
-      {screen.name === 'welcome' && <Welcome users={users} deployed={deployed} signIn={authInfo?.githubSignIn === 'configured'} session={!!authInfo?.session} pick={(u) => { setMe(u); go({ name: 'home' }); }}
+      {screen.name === 'welcome' && <Welcome users={users} deployed={deployed} signIn={authInfo?.githubSignIn === 'configured' && authInfo?.storage !== 'not-configured'} signInPending={authInfo?.githubSignIn === 'configured' && authInfo?.storage === 'not-configured'} session={!!authInfo?.session} pick={(u) => { setMe(u); go({ name: 'home' }); }}
         register={async (name) => {
           const r = await cli.call({ as: 'u-ram', op: 'registerName', args: { name } });
           if (!r.ok) return r.error;
@@ -261,7 +261,7 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
 
 function Err({ text }: { text: string | null }) { return text ? <div className="err" role="alert">{text}</div> : null; }
 
-function Welcome({ users, pick, register, deployed, signIn, session }: { users: UserInfo[]; pick: (u: Me) => void; register: (name: string) => Promise<string | null>; deployed?: boolean; signIn?: boolean; session?: boolean }) {
+function Welcome({ users, pick, register, deployed, signIn, signInPending, session }: { users: UserInfo[]; pick: (u: Me) => void; register: (name: string) => Promise<string | null>; deployed?: boolean; signIn?: boolean; signInPending?: boolean; session?: boolean }) {
   const [name, setName] = useState(''); const [err, setErr] = useState<string | null>(null);
   return (
     <div className="screen">
@@ -270,7 +270,7 @@ function Welcome({ users, pick, register, deployed, signIn, session }: { users: 
       {deployed && !session && (
         signIn
           ? <a className="chip primary block" style={{ textAlign: 'center', marginTop: 12 }} href="/api/auth/github">Sign in with GitHub</a>
-          : <p className="muted" style={{ marginTop: 12 }}>GitHub sign-in is not configured on this deployment yet.</p>
+          : <p className="muted" style={{ marginTop: 12 }}>{signInPending ? 'GitHub sign-in is being set up: durable storage is not configured on this deployment yet.' : 'GitHub sign-in is not configured on this deployment yet.'}</p>
       )}
       {(!deployed || session) && (<>
       <h2>{deployed ? 'Pick your account' : 'Pick a test identity'}</h2>
@@ -965,11 +965,11 @@ function SettingsView({ p, me, go, actOp }: { p: ProjectView; me: Me; go: (s: Sc
 // live only when the server says its client id/secret are configured. Anything
 // else is shown as unavailable, never as a working sign-in.
 function GithubSignIn() {
-  const [state, setState] = useState<'checking' | 'configured' | 'unavailable'>('checking');
+  const [state, setState] = useState<'checking' | 'configured' | 'unavailable'>('checking'); const [storageReady, setStorageReady] = useState(false);
   const [session, setSession] = useState<string | null>(null);
   const check = () => {
     fetch('/api/auth/status').then((r) => r.json()).then((d) => {
-      setState(d && d.githubSignIn === 'configured' ? 'configured' : 'unavailable');
+      setState(d && d.githubSignIn === 'configured' ? 'configured' : 'unavailable'); setStorageReady(!!d && d.storage !== 'not-configured');
       setSession(d && d.session ? String(d.session.githubLogin) : null);
     }).catch(() => { setState('unavailable'); setSession(null); });
   };
@@ -986,7 +986,8 @@ function GithubSignIn() {
         <>
           <div className="muted">Test identities only right now. GitHub sign-in is wired on the server but not yet verified end-to-end with GitHub.</div>
           {state === 'checking' && <div className="muted" style={{ marginTop: 6 }}>Checking the server...</div>}
-          {state === 'configured' && <div className="row" style={{ marginTop: 8 }}><a className="chip" href="/api/auth/github">Sign in with GitHub</a></div>}
+          {state === 'configured' && storageReady && <div className="row" style={{ marginTop: 8 }}><a className="chip" href="/api/auth/github">Sign in with GitHub</a></div>}
+          {state === 'configured' && !storageReady && <div className="muted" style={{ marginTop: 8 }}>GitHub sign-in is being set up: durable storage is not configured on this deployment yet.</div>}
           {state === 'unavailable' && <div className="row" style={{ marginTop: 8 }}><button className="chip" disabled title="The dev server has no GitHub client configured">Not connected</button></div>}
         </>
       )}
@@ -1078,4 +1079,4 @@ function DiscoverView() {
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
     </div>
   );
-                                                                                                                                }
+          }
