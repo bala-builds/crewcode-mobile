@@ -24,7 +24,7 @@ export const TEST_USERS = [
 ];
 
 export function seedState(): AppState {
-  const s: AppState = { users: clone(TEST_USERS), projects: [], currentUserId: null };
+  const s: AppState = { users: clone(TEST_USERS), projects: [], currentUserId: null, version: 0 };
   const demo = createProjectRaw('u-ram', 'Habit Tracker', '# Habit Tracker\n\nA small app to track daily habits. Home screen with today\'s habits, a streak counter and an add button.\n', 'Keep code simple. Use plain TypeScript. Do not touch files outside your folder.\n', 'DEM-123');
   demo.members.push({ userId: 'u-seeta', role: 'teammate', interests: ['frontend'], ai: { kind: 'owner' } });
   s.projects.push(demo);
