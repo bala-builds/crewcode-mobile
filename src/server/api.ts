@@ -6,6 +6,8 @@ import { visibleFiles, visibleMessages, visibleTasks, visibleMembers, isMember, 
 import { exportProject, restoreProject } from '../core/backup';
 import { planTasks } from '../core/orchestrator';
 import { deterministicBuild } from '../core/execution';
+import { validateProposal, validateProposalContext, resolveProjectTarget, describeProposal } from '../core/suggest';
+import { runSuggestionSidecar } from './suggest-sidecar';
 
 export type ApiRequest = { as: string; op: string; args?: Record<string, any> };
 export type ApiResponse = { ok: true; data?: any } | { ok: false; error: string };
@@ -74,9 +76,36 @@ export class Api {
    * A stopped run discards the provider result entirely - no late writes, no build message.
    */
   async callAsync(req: ApiRequest): Promise<ApiResponse> {
-    if (req.op !== 'runBuild' && req.op !== 'assignTasks') return this.call(req);
+    if (req.op !== 'runBuild' && req.op !== 'assignTasks' && req.op !== 'suggestAction') return this.call(req);
     const { as: u, args = {} } = req;
     if (!this.state.users.some((x) => x.id === u)) return { ok: false, error: 'Unknown test identity.' };
+    if (req.op === 'suggestAction') {          // Read-only suggestion: proposes ONE allowlisted call, validated for shape.
+            // Nothing is executed here; the UI shows the proposal and only the user's
+            // explicit Run click goes through the normal gated ops above.
+          if (!process.env.NEEDLE_ENABLED) return { ok: false, error: 'Command suggestions are not enabled on this server.' };
+          if (typeof args.text !== 'string' || args.text.trim().length === 0) return { ok: false, error: 'No command text.' };
+          if (typeof args.projectId !== 'string') return { ok: false, error: 'No project.' };
+          const p = this.state.projects.find((x: Project) => x.id === args.projectId);
+          if (!p || !isMember(p, u)) return { ok: false, error: 'Not a member of this project.' };
+          const brief = p.tasks.map((t) => ({ id: t.id, title: t.title, assigneeId: t.assigneeId }));
+          const raw = await runSuggestionSidecar(args.text.trim().slice(0, 500), args.projectId, brief);
+          if ('none' in raw) return { ok: true, data: { proposal: null, note: raw.none as string } };
+          const v = validateProposal(raw);
+          if (!v.ok) return { ok: true, data: { proposal: null, note: `Suggestion rejected: ${v.error}` } };
+          // The model cannot be trusted to echo the project id. Normalize model noise to the
+          // current project, but NEVER retarget an explicit other-project request: reject it.
+          if ('projectId' in v.proposal.args) {
+            const others = this.state.projects.filter((x: Project) => x.id !== p.id).map((x: Project) => ({ id: x.id, name: x.name }));
+            const tgt = resolveProjectTarget(String(v.proposal.args.projectId ?? ''), p.id, args.text, others);
+            if (!tgt.ok) return { ok: true, data: { proposal: null, note: `Suggestion rejected: ${tgt.error}` } };
+            v.proposal.args.projectId = tgt.projectId;
+          }
+          const ctx = { projectId: p.id, isOwner: isOwner(p, u), tasks: p.tasks.map((t) => ({ id: t.id, assigneeId: t.assigneeId })) };
+          const cx = validateProposalContext(v.proposal, ctx, u);
+          if (!cx.ok) return { ok: true, data: { proposal: null, note: `Suggestion rejected: ${cx.error}` } };
+          return { ok: true, data: { proposal: v.proposal, consequence: describeProposal(v.proposal) } };
+      
+    }
     if (req.op === 'assignTasks') {
       // Same boundary as task runs: start marks planning, the provider runs, and apply
       // commits only if planning was not stopped meanwhile. A stopped plan discards the result.
@@ -143,7 +172,7 @@ export class Api {
       case 'listProjects':
         return { ok: true, data: st.projects.filter((p) => isMember(p, u)).map((p) => viewFor(p, u, st.users, st.version)) };
       case 'getProject': {
-        const p = st.projects.find((x) => x.id === args.projectId);
+        const p = this.state.projects.find((x: Project) => x.id === args.projectId);
         // Same answer for "missing" and "not yours" so ids cannot be probed.
         if (!p || !isMember(p, u)) return { ok: false, error: 'Project not found.' };
         return { ok: true, data: viewFor(p, u, st.users, st.version) };
@@ -183,7 +212,7 @@ export class Api {
       case 'startTaskRun': return this.commit(S.startTaskRun(st, args.projectId, u, args.taskId));
       case 'applyTaskRun': {
         // Same ownership rule as startTaskRun: only the assignee (or the owner) may land a result.
-        const p = st.projects.find((x) => x.id === args.projectId);
+        const p = this.state.projects.find((x: Project) => x.id === args.projectId);
         const t = p?.tasks.find((x) => x.id === args.taskId);
         if (!p || !t) return { ok: false, error: 'Task not found.' };
         if (t.assigneeId !== u && !isOwner(p, u)) return { ok: false, error: 'That task is not yours.' };
