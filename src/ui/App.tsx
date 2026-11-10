@@ -10,6 +10,7 @@ import { integrationCheck, reviewFingerprint } from '../core/contract';
 import { driveStatus } from '../core/drive';
 import { HttpClient, op, type ClientData, type ProjectView } from './client';
 import { highlight } from './highlight';
+import { Structured } from './markdown';
 
 /**
  * The phone UI talks ONLY to the dev API through ClientData (HttpClient in production,
@@ -447,7 +448,10 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSheet(null);
-      if (e.ctrlKey || e.metaKey) {
+      // Never steal Ctrl/Cmd+digit (or the browser's own tab keys) while the user is typing.
+      const target = e.target as HTMLElement | null;
+      const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      if ((e.ctrlKey || e.metaKey) && !typing) {
         const order: Tab[] = ['chat', 'code', 'preview', 'tasks', 'files', 'team', 'settings'];
         const i = Number(e.key) - 1;
         if (i >= 0 && i < order.length) { e.preventDefault(); setTab(order[i]); clearErr(); }
@@ -563,12 +567,12 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
       {sheet === 'overview' && <div className="sheet-bg" onClick={() => setSheet(null)}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Project overview"><RightRail p={p} me={me} nameOf={nameOf} go={(t) => { setTab(t); setSheet(null); }} manageTools={() => setSheet('skills')} /></div></div>}
       {sheet === 'notif' && (
         <div className="sheet-bg" onClick={() => setSheet(null)}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Notifications">
-          <h2>Notifications</h2>
+          <div className="row spread"><h2>Notifications</h2><button className="small" onClick={() => setSheet(null)}>Close</button></div>
           {events.length === 0 && <div className="empty">No activity yet. AI plans, builds and errors show up here.</div>}
           {events.slice(-12).reverse().map((m) => (
             <div key={m.id} className="card">
               <div className="muted">{new Date(m.at).toLocaleString()} · {m.kind === 'ai_build' ? (m.simulated === false ? 'AI build' : 'simulated build') : m.kind === 'ai_error' ? 'build error' : m.kind === 'ai_plan' ? 'plan' : 'system'}</div>
-              <div>{m.text}</div>
+              <Structured text={m.text} />
               {m.files && m.files.length > 0 && <div className="row wrap" style={{ marginTop: 6 }}>{m.files.map((f) => <button key={f} className="small" onClick={() => { setSheet(null); setOpen(f); setTab('code'); }}>{f}</button>)}</div>}
             </div>
           ))}
@@ -623,7 +627,7 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, real
           return (
             <div key={m.id} className={'bubble ' + (mine ? 'me' : ai ? 'ai' : 'other') + (m.kind === 'ai_error' ? ' error' : '')}>
               {!mine && <div className="who">{nameOf(m.authorId)}{m.kind === 'ai_build' && m.simulated !== false ? ' - simulated build' : ''}</div>}
-              {m.text}
+              {ai ? <Structured text={m.text} /> : m.text}
               {m.kind === 'ai_build' && m.files?.length > 0 && (() => {
                 const totals: { added: number; removed: number } = Object.values((m.diff ?? {}) as Record<string, { added: number; removed: number }>).reduce((a, d) => ({ added: a.added + d.added, removed: a.removed + d.removed }), { added: 0, removed: 0 });
                 const rows = m.files.map((f: string) => (
@@ -684,6 +688,8 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
     if (f === path) setOpen(next[next.length - 1] ?? null);
   };
   const isDirtyTab = (f: string) => { const d = editMemory.get(editKey(f)); return !!d && d.text !== (p.files[f] ?? ''); };
+  // Duplicate basenames across open tabs get their folder shown so they stay distinguishable.
+  const tabLabel = (f: string) => { const base = f.slice(f.lastIndexOf('/') + 1); return tabs.some((t) => t !== f && t.slice(t.lastIndexOf('/') + 1) === base) ? f : base; };
   const history = p.messages.filter((m) => m.kind === 'ai_build' && m.files && m.files.length > 0).slice(-8).reverse();
   // Folders this user may create files in, derived from the redacted view (mirrors the server gate).
   const roots = p.role === 'owner' ? [''] : [...new Set(p.tasks.map((t) => t.folder))];
@@ -758,7 +764,7 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
         <div className="ftabs" aria-label="Open files">
           {tabs.map((f) => (
             <span key={f} className={'ftab' + (f === path ? ' on' : '')}>
-              <button onClick={() => openTab(f)}>{isDirtyTab(f) && <span className="fdot" />}{f.slice(f.lastIndexOf('/') + 1)}</button>
+              <button title={f} onClick={() => openTab(f)}>{isDirtyTab(f) && <span className="fdot" />}{tabLabel(f)}</button>
               <button className="fx" aria-label={'Close ' + f} onClick={() => closeTab(f)}>x</button>
             </span>
           ))}
@@ -1160,4 +1166,4 @@ function DiscoverView() {
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
     </div>
   );
-    }
+        }
