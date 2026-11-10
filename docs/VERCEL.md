@@ -16,7 +16,7 @@ accounts beyond the existing Vercel Hobby account and the existing GitHub App.
   OAuth nonces. Every write is compare-and-swap on the file sha; a 409 re-reads
   and re-applies the SAME request on fresh bytes (bounded, 3 tries). The public
   code repo never carries app state, chats, sessions or keys.
-- App auth: RS256 JWT minted from the App private key (env, base64 PEM via
+- App auth: RS256 JWT minted from the App private key (env, raw PEM or base64 via
   vault) -> installation token (1 h, cached per warm instance).
 - User auth: the dev server's guarantees kept across cold starts -
   - OAuth state: HMAC-signed (forgeries fail before any storage read), bound to
@@ -60,7 +60,8 @@ accounts beyond the existing Vercel Hobby account and the existing GitHub App.
    the vault (PEM never in chat, never in the repo).
 4. Create the Vercel project from bala-builds/crewcode-mobile (auto-deploy from
    main), set env vars: CREWCODE_GITHUB_CLIENT_ID/SECRET, CREWCODE_GITHUB_APP_ID,
-   CREWCODE_GITHUB_APP_PRIVATE_KEY_B64, CREWCODE_GITHUB_APP_INSTALLATION_ID,
+   CREWCODE_GITHUB_APP_PRIVATE_KEY (raw PEM; _B64 base64 form also accepted),
+   CREWCODE_GITHUB_APP_INSTALLATION_ID,
    CREWCODE_DATA_REPO, CREWCODE_SESSION_SECRET, CREWCODE_APP_URL.
 5. Update the OAuth callback URL to https://<deployment>/api/auth/github/callback.
 6. Verify end-to-end: sign-in round-trip, project create/persist across cold
