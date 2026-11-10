@@ -187,7 +187,7 @@ export function applyPlanning(state: AppState, projectId: string, outcome: PlanO
   }
   p.tasks = toTasks(outcome.plan, () => newId('t'));
   const nm = (id: string) => next.users.find((u) => u.id === id)?.name ?? id;
-  push({ authorId: 'ai', taskId: null, kind: 'ai_plan', text: ((opts.simulated ?? true) ? 'Simulated plan:\n' : 'Plan:\n') + p.tasks.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
+  push({ authorId: 'ai', taskId: null, kind: 'ai_plan', simulated: opts.simulated !== false, text: ((opts.simulated ?? true) ? 'Simulated plan:\n' : 'Plan:\n') + p.tasks.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
   // Contract folder ownership is updated by the owner's AI, not by teammates.
   p.files['CONTRACT.md'] = defaultContract(p.name, p.tasks.map((t) => ({ folder: t.folder, owner: nm(t.assigneeId) })));
   if (!p.fileRevs) p.fileRevs = {};
@@ -310,7 +310,7 @@ export function applyTaskRun(
     reopenAcceptedReviews(p, path);
   }
   t.status = 'in_progress'; t.run = 'idle'; delete t.runError;
-  push({ authorId: 'ai', taskId, kind: 'ai_build', text: (opts.simulated === false ? '' : 'Simulated build. ') + result.message, files: written });
+  push({ authorId: 'ai', taskId, kind: 'ai_build', simulated: opts.simulated !== false, text: (opts.simulated === false ? '' : 'Simulated build. ') + result.message, files: written });
   return { ok: true, state: next };
 }
 
