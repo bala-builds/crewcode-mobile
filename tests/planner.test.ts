@@ -110,12 +110,32 @@ describe('feature-based decomposition (deterministic fallback)', () => {
     expect(extractFeatures('# App\nSome prose without a list.')).toEqual([]);
   });
 
-  it('splits features contiguously: 2 people, 4 pages -> 2 each, each end to end', () => {
+  it('balances features by rough size: 2 people, 4 pages, each end to end', () => {
     const plan = planTasks(proj('# App\n\n- Get started\n- Login\n- Home\n- Settings\n'), users2);
+    // Greedy least-loaded in PRD order: 'Get started' (11) to Seeta; the three shorter
+    // lines balance onto Hanuma. No feature is split; every folder has one owner.
     expect(plan.map((t) => [t.assigneeId, t.folder])).toEqual([
-      ['u-seeta', 'get-started/'], ['u-seeta', 'login/'], ['u-hanuma', 'home/'], ['u-hanuma', 'settings/'],
+      ['u-seeta', 'get-started/'], ['u-hanuma', 'login/'], ['u-hanuma', 'home/'], ['u-hanuma', 'settings/'],
     ]);
     expect(plan[0].detail).toContain('end to end');
+    expect(validatePlan(plan, team).ok).toBe(true);
+  });
+
+  it('uneven workload: one big feature stays whole, smaller ones pack onto the other person (food app)', () => {
+    const prd = '# Food Now\n\nFeatures:\n- Restaurant search: browse, filter and rank restaurants with menus, photos and reviews across many screens\n- Order: cart and checkout\n- Tracking: live order status\n- Profile: account pages\n';
+    const plan = planTasks(proj(prd), users2);
+    const byUser = (id: string) => plan.filter((t) => t.assigneeId === id).map((t) => t.folder);
+    expect(byUser('u-seeta')).toEqual(['restaurant-search/']);
+    expect(byUser('u-hanuma')).toEqual(['order/', 'tracking/', 'profile/']);
+    expect(validatePlan(plan, team).ok).toBe(true);
+  });
+
+  it('dependency hints in a bullet are surfaced in the task detail, not enforced (numbered CLI tool)', () => {
+    const prd = '# cfg-tool\n\n1. Parse: read and validate config files\n2. Report: render the output, after Parse\n';
+    const plan = planTasks(proj(prd), users2);
+    const report = plan.find((t) => t.folder === 'report/')!;
+    expect(report.detail).toContain('Depends on: Parse');
+    expect(report.detail).toContain('not enforced');
     expect(validatePlan(plan, team).ok).toBe(true);
   });
 
