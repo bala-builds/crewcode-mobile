@@ -241,4 +241,23 @@ describe('seven-tab workspace', () => {
     expect(chips.some((c) => c.includes('PRD.md'))).toBe(true);
     expect(chips.some((c) => c.includes('AGENT_INSTRUCTIONS.md'))).toBe(false);
   });
+
+  it('mobile Overview sheet opens the right-rail content and closes on backdrop', async () => {
+    await openSeed();
+    // The topbar Overview button is the mobile entry to the right-rail context.
+    const btn = [...document.querySelectorAll('.topbar button')].find((b) => b.textContent?.trim() === 'Overview')!;
+    expect(btn.className).toContain('mob-only'); // hidden on desktop by CSS, the only entry on mobile
+    act(() => { btn.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    await flush();
+    const dlg = document.querySelector('[role="dialog"][aria-label="Project overview"]')!;
+    expect(dlg).toBeTruthy();
+    expect(dlg.textContent).toContain('Project overview');
+    expect(dlg.textContent).toContain('Habit Tracker');
+    expect(dlg.textContent).toContain('No tasks yet.');
+    expect(dlg.textContent).toContain('AI & tools');
+    // Backdrop click closes the sheet.
+    act(() => { document.querySelector('.sheet-bg')!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    await flush();
+    expect(document.querySelector('[role="dialog"][aria-label="Project overview"]')).toBeNull();
+  });
 });
