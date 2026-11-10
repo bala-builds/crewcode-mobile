@@ -571,7 +571,16 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, real
             <div key={m.id} className={'bubble ' + (mine ? 'me' : ai ? 'ai' : 'other') + (m.kind === 'ai_error' ? ' error' : '')}>
               {!mine && <div className="who">{nameOf(m.authorId)}{m.kind === 'ai_build' && m.simulated !== false ? ' - simulated build' : ''}</div>}
               {m.text}
-              {m.kind === 'ai_build' && m.files?.length > 0 && <div style={{ marginTop: 8 }}><button className="small" onClick={() => openCode(m.files[0])}>{'</>'} Code ({m.files.length})</button></div>}
+              {m.kind === 'ai_build' && m.files?.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  {m.files.map((f: string) => (
+                    <div key={f} className="row spread" style={{ marginTop: 4 }}>
+                      <button className="small" onClick={() => openCode(f)}>{'</>'} {f}</button>
+                      {m.diff?.[f] && <span className="muted">+{m.diff[f].added} -{m.diff[f].removed}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
               {m.kind === 'ai_error' && myTask && <div style={{ marginTop: 8 }}><button className="small" onClick={() => onBuild(myTask.id, false)}>Retry</button></div>}
             </div>
           );
@@ -1024,4 +1033,4 @@ function DiscoverView() {
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
     </div>
   );
-}
+                                                                   }
