@@ -10,7 +10,7 @@ Phase numbers follow the private phase plan; names here describe what each area 
 | Permissions | Enforced where the client cannot bypass it; every access rule has a test that fails if the rule is removed | Met for the local dev API, Not built for a hosted server | src/server/api.ts, tests/api.test.ts; rule-removal run 10 Nov in BUGLOG.md |
 | Teams (Ph 2) | Team code create, join, regenerate, revoke, remove member | Met (logic) | tests/flows.test.ts |
 | Project files | PRD, agent instructions, contract saved in project root | Met (logic) | tests/flows.test.ts |
-| Tasks (Ph 3) | AI splits work by interest, teammates only, one folder each | Demo (rule-based planner, no real AI) | src/core/orchestrator.ts |
+| Tasks (Ph 3) | AI splits work by feature: each teammate owns one feature end to end (its screens and its backend together) in one folder; decomposition quality is provider-dependent, the deterministic fallback splits the PRD feature list contiguously | Demo (rule-based planner, no real AI decomposition) | src/core/orchestrator.ts, tests/planner.test.ts |
 | Merge (Ph 6, F6) | Accepted work is copied into main/<folder>/; owner-only tree; owner edits to a merged copy block the next merge until explicitly overwritten; staleness and mismatch rules still bind | Met (local) | tests/merge-main.test.ts, review.test.ts; shots 27/27b |
 | Build (Ph 3-4) | Teammate runs a build and files land only in their folder | Demo (generated placeholder files) | simulateBuild |
 | Chat UI | Owner and teammate chat, error with retry, code button | Demo | docs/screenshots |
