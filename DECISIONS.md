@@ -20,9 +20,11 @@ Ground rules kept while building: no paid plan or card required so far; test ide
 - Team codes expire 7 days after creation or regeneration (PRD B5 says codes can expire; the PRD sets no duration, so 7 days is a clearly labeled TEST default). Expiry is configurable by the owner per project in the Team sheet: no expiry, 1, 7 or 30 days, applied to the current code without changing it. Codes already issued keep their established conditions until the owner changes them. The owner sees the date in the Team sheet and regenerates to reopen joining. Teammates never receive the code or its state.
 - Join limits (PRD B5 "limited in use") are owner-configurable per code: no limit (the default; no forced cap) or 1-1000 joins. Uses are counted on each successful join; an existing member retrying still gets the already-member message, and the limit refusal tells the joiner to ask the owner. Both controls are local reversible settings, no approval needed.
 
-## Merge review (PRD F6, acceptance 9)
+## Merge review and the main folder (PRD F6, acceptance 9; user approved 10 Nov)
 
-Work in a task folder is a draft until the assignee submits it and the owner runs the integration check and merges it. A merge is refused while mismatches are open or when the folder changed after the last clean check (stale review). Test default; real merge targets (moving code into a shared tree) come with real storage in Phase 9.
+Work in a task folder is a draft until the assignee submits it and the owner runs the integration check and merges it. A merge is refused while mismatches are open or when the folder changed after the last clean check (stale review).
+
+Merge representation (approved as the listed "combine accepted work" item): accepting a merge copies every checked file `<folder>/<name>` to `main/<folder>/<name>`. Rationale: collision-free across folders, deterministic, preserves which task produced each file, and stays owner-only (teammates keep folder scope). The merged content is recorded per acceptance; a merged copy the owner edited since is never silently overwritten - the next merge is refused until the owner explicitly overwrites. Hosted/Drive-backed storage stays a separate decision (O9, auth-gated).
 
 ## Tool runtime boundary (Phase 8)
 
