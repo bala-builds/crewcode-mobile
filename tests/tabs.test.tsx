@@ -114,6 +114,12 @@ describe('seven-tab workspace', () => {
     await clickTab('Team');
     expect(text()).toContain('Paused: project storage is moving to GitHub instead');
     expect(text()).not.toContain('Your standing choice');
+    // GitHub sign-in is gated on the server's reported state; in tests there is
+    // no server, so it must settle to the honest unavailable state.
+    await clickTab('Settings');
+    await flush();
+    expect(text()).toContain('Not connected');
+    expect(text()).not.toContain('Sign in with GitHub');
   });
 
   it('task filters and progress bar reflect real task state', async () => {
@@ -164,6 +170,26 @@ describe('seven-tab workspace', () => {
     await openSeed();
     await clickTab('Preview');
     expect(text()).toContain('Nothing to preview yet');
+  });
+
+  it('Discover lists the three categories with honest per-item states', async () => {
+    await openSeed();
+    await click('Discover');
+    expect(text()).toContain('Skills');
+    expect(text()).toContain('MCP servers');
+    expect(text()).toContain('Open-source prebuilt components');
+    expect(text()).toContain('Claude Design');
+    expect(text()).toContain('Cloudflare security MCP');
+    expect(text()).toContain('Hosted service - information only');
+    expect(text()).toContain('Runs locally in this build');
+    expect(text()).toContain('Needs a connection - not available in this build');
+    // No faked connections or add actions on the browse page.
+    expect(text()).toContain('Nothing on this page is a live external connection');
+    // Search narrows the catalogue.
+    setVal(document.querySelector('input[aria-label="Search Discover catalogue"]') as HTMLInputElement, 'secret');
+    await flush();
+    expect(text()).toContain('Local secret scan');
+    expect(text()).not.toContain('Claude Design');
   });
 
   it('code tab file search filters the explorer', async () => {
