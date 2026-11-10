@@ -13,7 +13,7 @@ A chat-first app where a team builds software together. The owner writes a maste
 
 **Real:** the preview runs the actual web file with scripts on in an opaque-origin iframe (no access to the app or its storage; network not blocked; not a secure runtime for untrusted code), and local tools run through a genuine MCP stdio server in a permission-restricted process.
 
-**Not built:** owner-key sharing with a real key (needs server-side key storage, approval-gated), real storage (Phase 9, Drive wiring waits for sign-in), and authentication (Phase 11, built last). No live provider call has been made from this repo; adapter tests use a fake fetch. The skills/MCP catalog maps named tools to verified official sources, but the two named external items are not runnable in this build, so that integration is incomplete (O8).
+**Not built:** owner-key sharing with a real key (needs server-side key storage, approval-gated), real Drive storage (Phase 9: upload code path built but inert - this build has no confirmed Google OAuth client ID), and authentication (Phase 11, built last). No live provider call has been made from this repo; adapter tests use a fake fetch. The skills/MCP catalog maps named tools to verified official sources, but the two named external items are not runnable in this build, so that integration is incomplete (O8).
 
 ## Important limits
 - No real sign-in. You pick a test identity (Ram, Seeta, Hanuma, Outsider) or register a name. This is not a login.
