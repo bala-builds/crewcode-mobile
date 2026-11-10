@@ -65,7 +65,7 @@ export function anthropicProvider(opts: { apiKey: string; model: string; fetchIm
       try {
         const res = await f('https://api.anthropic.com/v1/messages', {
           method: 'POST', signal: ctl.signal,
-          headers: { 'content-type': 'application/json', 'x-api-key': opts.apiKey, 'anthropic-version': '2023-06-01' },
+          headers: { 'content-type': 'application/json', 'x-api-key': opts.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
           body: JSON.stringify({ model: opts.model, max_tokens: 4096, system, messages }),
         });
         const httpErr = mapHttpError(res.status);
