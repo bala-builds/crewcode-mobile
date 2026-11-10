@@ -73,6 +73,26 @@ export function registerName(state: AppState, name: string): Result<{ userId: st
   return { ok: true, state: next, userId: id };
 }
 
+// Real GitHub sign-in: find-or-create the account bound to the immutable GitHub
+// user id. A changed login updates the label, never the binding.
+export function upsertGithubUser(state: AppState, githubId: number, login: string): Result<{ userId: string }> {
+  if (!Number.isInteger(githubId) || githubId <= 0) return fail('Bad GitHub user id.');
+  const clean = login.trim().slice(0, 40);
+  if (clean.length < 1) return fail('GitHub returned no login.');
+  const existing = state.users.find((u) => u.githubId === githubId);
+  if (existing) {
+    if (existing.name === clean && existing.githubLogin === clean) return { ok: true, state, userId: existing.id };
+    const next = clone(state);
+    const u = next.users.find((x) => x.id === existing.id)!;
+    u.name = clean; u.githubLogin = clean;
+    return { ok: true, state: next, userId: existing.id };
+  }
+  const next = clone(state);
+  const id = newId('u');
+  next.users.push({ id, name: clean, githubId, githubLogin: clean });
+  return { ok: true, state: next, userId: id };
+}
+
 export function createProject(state: AppState, userId: string, name: string, prd: string, instructions: string): Result<{ projectId: string }> {
   if (!state.users.some((u) => u.id === userId)) return fail('Unknown user.');
   if (name.trim().length < 2) return fail('Give the project a name.');
