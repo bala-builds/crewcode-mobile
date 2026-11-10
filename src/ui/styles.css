@@ -96,3 +96,18 @@ iframe { width: 100%; height: 55dvh; border: 1px solid var(--line); border-radiu
 .progress > div { height: 100%; background: var(--accent, #2f6f4f); border-radius: 999px; transition: width .25s ease; }
 .tabs { overflow-x: auto; scrollbar-width: none; }
 .tabs button { flex: 0 0 auto; }
+
+/* Code editor syntax overlay: highlighted pre sits under a transparent-text textarea. */
+.editor-wrap { position: relative; }
+.editor-wrap .editor { margin: 0; }
+.editor-hl { position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: #fff; border: 1px solid var(--line, #E5E2DB); border-radius: 8px; padding: 10px; }
+.editor-input { position: relative; width: 100%; background: transparent; color: transparent; caret-color: #171717; border: 1px solid transparent; border-radius: 8px; padding: 10px; }
+.editor-input:focus { outline: none; border-color: #D8D4CC; }
+.editor-input::selection { background: rgba(180, 83, 9, 0.32); }
+.tk-kw { color: #9A3412; font-weight: 600; }
+.tk-tag { color: #B45309; }
+.tk-attr { color: #7C5A2E; }
+.tk-prop { color: #7C5A2E; }
+.tk-str { color: #4D7C0F; }
+.tk-com { color: #8A8A85; font-style: italic; }
+.tk-num { color: #9A3412; }
