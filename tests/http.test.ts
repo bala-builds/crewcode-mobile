@@ -28,7 +28,7 @@ afterAll(() => { server?.kill(); try { fs.unlinkSync(dataFile); } catch {} });
 
 describe('local HTTP API: full owner/teammate session', () => {
   it('create, join, assign, scoped views, save with conflict, skills, backup over HTTP', async () => {
-    const c = await call('u-ram', 'createProject', { name: 'HTTP App', prd: '# HTTP App\nA real local session.', instructions: 'Keep it simple.' });
+    const c = await call('u-ram', 'createProject', { name: 'HTTP App', prd: '# HTTP App\nA real local session.\n\nFeatures:\n- Home: main screen\n- Settings: preferences\n', instructions: 'Keep it simple.' });
     expect(c.ok).toBe(true);
     const pid = c.data.projectId;
     const code = (await call('u-ram', 'getProject', { projectId: pid })).data.teamCode;
@@ -45,8 +45,8 @@ describe('local HTTP API: full owner/teammate session', () => {
     expect(sv.tasks.every((t: any) => t.assigneeId === 'u-seeta')).toBe(true);
 
     // Scoped save + revision conflict over HTTP.
-    expect((await call('u-seeta', 'saveFile', { projectId: pid, path: 'frontend/a.ts', content: 'export {};\n' })).ok).toBe(true);
-    expect((await call('u-seeta', 'saveFile', { projectId: pid, path: 'backend/x.ts', content: 'x' })).ok).toBe(false);
+    expect((await call('u-seeta', 'saveFile', { projectId: pid, path: 'settings/a.ts', content: 'export {};\n' })).ok).toBe(true);
+    expect((await call('u-seeta', 'saveFile', { projectId: pid, path: 'home/x.ts', content: 'x' })).ok).toBe(false);
     expect((await call('u-ram', 'saveFile', { projectId: pid, path: 'PRD.md', content: '# v2', baseRev: 0 })).ok).toBe(true);
     const stale = await call('u-ram', 'saveFile', { projectId: pid, path: 'PRD.md', content: '# clobber', baseRev: 0 });
     expect(stale.ok).toBe(false);
@@ -54,14 +54,14 @@ describe('local HTTP API: full owner/teammate session', () => {
 
     // Skill lifecycle over HTTP: add (teammate) -> blocked -> approve -> run in scope -> remove -> blocked.
     expect((await call('u-seeta', 'addSkill', { projectId: pid, skillId: 'code-review' })).ok).toBe(true);
-    expect((await call('u-seeta', 'runSkill', { projectId: pid, skillId: 'code-review', path: 'frontend/a.ts' })).ok).toBe(false);
+    expect((await call('u-seeta', 'runSkill', { projectId: pid, skillId: 'code-review', path: 'settings/a.ts' })).ok).toBe(false);
     expect((await call('u-ram', 'approveSkill', { projectId: pid, skillId: 'code-review' })).ok).toBe(true);
-    expect((await call('u-seeta', 'runSkill', { projectId: pid, skillId: 'code-review', path: 'backend/x.ts' })).ok).toBe(false);
-    const run = await call('u-seeta', 'runSkill', { projectId: pid, skillId: 'code-review', path: 'frontend/a.ts' });
+    expect((await call('u-seeta', 'runSkill', { projectId: pid, skillId: 'code-review', path: 'home/x.ts' })).ok).toBe(false);
+    const run = await call('u-seeta', 'runSkill', { projectId: pid, skillId: 'code-review', path: 'settings/a.ts' });
     expect(run.ok).toBe(true);
-    expect(run.data.output).toContain('Review of frontend/a.ts');
+    expect(run.data.output).toContain('Review of settings/a.ts');
     expect((await call('u-ram', 'removeSkill', { projectId: pid, skillId: 'code-review' })).ok).toBe(true);
-    expect((await call('u-seeta', 'runSkill', { projectId: pid, skillId: 'code-review', path: 'frontend/a.ts' })).ok).toBe(false);
+    expect((await call('u-seeta', 'runSkill', { projectId: pid, skillId: 'code-review', path: 'settings/a.ts' })).ok).toBe(false);
 
     // Backup/restore over HTTP, owner only.
     expect((await call('u-seeta', 'exportProject', { projectId: pid })).ok).toBe(false);
