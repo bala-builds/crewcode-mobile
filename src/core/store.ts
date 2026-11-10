@@ -185,9 +185,40 @@ export function applyPlanning(state: AppState, projectId: string, outcome: PlanO
     push({ authorId: 'ai', taskId: null, kind: 'ai_error', text: 'The plan was rejected: ' + v.errors.join(' ') });
     return { ok: true, state: next };
   }
-  p.tasks = toTasks(outcome.plan, () => newId('t'));
+  // The plan is a proposal only: the owner reviews (and can reassign or discard) before any
+  // task exists. confirmPlanning is the only path that creates tasks from a proposal.
+  p.proposedPlan = outcome.plan;
   const nm = (id: string) => next.users.find((u) => u.id === id)?.name ?? id;
-  push({ authorId: 'ai', taskId: null, kind: 'ai_plan', simulated: opts.simulated !== false, text: ((opts.simulated ?? true) ? 'Simulated plan:\n' : 'Plan:\n') + p.tasks.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
+  push({ authorId: 'ai', taskId: null, kind: 'ai_plan', simulated: opts.simulated !== false, text: ((opts.simulated ?? true) ? 'Proposed plan (simulated) - waiting for the owner:\n' : 'Proposed plan - waiting for the owner:\n') + outcome.plan.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
+  return { ok: true, state: next, count: outcome.plan.length };
+}
+
+/** Owner reviews the proposed split: approve (optionally reassigning tasks first) or discard.
+ *  Teammates can never approve a plan. Only approval creates tasks and rewrites the contract. */
+export function confirmPlanning(state: AppState, projectId: string, userId: string, opts: { accept: boolean; reassign?: Record<number, string> }): Result<{ count?: number }> {
+  const next = clone(state);
+  const p = next.projects.find((x) => x.id === projectId);
+  if (!p) return fail('Project not found.');
+  if (!isOwner(p, userId)) return fail('Only the owner can approve or discard a plan.');
+  const plan = p.proposedPlan;
+  if (!plan) return fail('There is no proposed plan to review.');
+  const push = (m: Omit<ChatMessage, 'id' | 'at'>) => p.messages.push({ ...m, id: newId('m'), at: Date.now() });
+  if (!opts.accept) {
+    p.proposedPlan = undefined;
+    push({ authorId: 'ai', taskId: null, kind: 'ai_error', text: 'The owner discarded the proposed plan. No tasks were changed.' });
+    return { ok: true, state: next };
+  }
+  const adjusted = plan.map((t, i) => ({ ...t, assigneeId: opts.reassign?.[i] ?? t.assigneeId }));
+  const team = p.members.filter((m) => m.role === 'teammate');
+  const v = validatePlan(adjusted, team);
+  if (!v.ok) {
+    push({ authorId: 'ai', taskId: null, kind: 'ai_error', text: 'The plan was rejected: ' + v.errors.join(' ') });
+    return { ok: true, state: next };
+  }
+  p.proposedPlan = undefined;
+  p.tasks = toTasks(adjusted, () => newId('t'));
+  const nm = (id: string) => next.users.find((u) => u.id === id)?.name ?? id;
+  push({ authorId: 'ai', taskId: null, kind: 'ai_plan', simulated: false, text: 'Plan approved by the owner:\n' + p.tasks.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
   // Contract folder ownership is updated by the owner's AI, not by teammates.
   p.files['CONTRACT.md'] = defaultContract(p.name, p.tasks.map((t) => ({ folder: t.folder, owner: nm(t.assigneeId) })));
   if (!p.fileRevs) p.fileRevs = {};
@@ -214,7 +245,9 @@ export function assignTasks(state: AppState, projectId: string, userId: string, 
   const plan = planTasksFn({ name: p0.name, files: p0.files, members: team }, started.state.users);
   const applied = applyPlanning(started.state, projectId, { ok: true, plan }, { simulated });
   if (!applied.ok) return applied;
-  return { ok: true, state: applied.state, count: applied.count ?? 0 };
+  const confirmed = confirmPlanning(applied.state, projectId, userId, { accept: true });
+  if (!confirmed.ok) return confirmed;
+  return { ok: true, state: confirmed.state, count: confirmed.count ?? 0 };
 }
 
 export function postPrompt(state: AppState, projectId: string, userId: string, text: string, taskId: string | null): Result {
@@ -417,6 +450,10 @@ export function acceptTaskMerge(state: AppState, projectId: string, userId: stri
     if (r.state === 'accepted') return 'This task is already merged.';
     if (r.state === 'changes_requested') return 'The integration check reported mismatches. They must be fixed and re-checked first.';
     if (r.fingerprint !== reviewFingerprint(p.fileRevs ?? {}, t.folder)) return 'The folder or the contract changed since the last check. Run the integration check again.';
+    for (const dep of t.deps ?? []) {
+      const dt = p.tasks.find((x) => x.folder === dep);
+      if (!dt || dt.review?.state !== 'accepted') return `Depends on ${dep} - merge that feature first.`;
+    }
     const snapshot: Record<string, string> = {};
     for (const [path, content] of Object.entries(p.files)) if (path.startsWith(t.folder)) snapshot[path] = content;
     if (!opts.force && r.merged) {
