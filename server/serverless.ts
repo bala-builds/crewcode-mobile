@@ -58,6 +58,8 @@ export function startSignIn(deps: ServerlessDeps): Result {
 export async function finishSignIn(deps: ServerlessDeps, query: { code?: string; state?: string }, cookieHeader?: string): Promise<Result> {
   const cfg = deps.authCfg;
   if (!cfg) return { status: 404, body: { ok: false, error: 'GitHub sign-in is not configured on this server.' } };
+  // Durable state/session storage is required to finish sign-in safely.
+  if (!deps.stateRepo) return { status: 503, body: { ok: false, error: 'Durable storage is not configured on this deployment.' } };
   if (!query.code || !query.state) return { status: 400, body: { ok: false, error: 'Missing code or state.' } };
   // Same-browser binding: the state value must arrive in BOTH the query and the
   // HttpOnly cookie set when sign-in started.
@@ -76,7 +78,7 @@ export async function finishSignIn(deps: ServerlessDeps, query: { code?: string;
 }
 
 export async function logout(deps: ServerlessDeps, cookieHeader?: string): Promise<Result> {
-  await destroySessionDurable(deps.authStore, sessionIdFromCookie(cookieHeader));
+  if (deps.stateRepo) await destroySessionDurable(deps.authStore, sessionIdFromCookie(cookieHeader));
   return { status: 200, body: { ok: true }, setCookie: clearSessionCookie(!!deps.authCfg && deps.authCfg.callbackUrl.startsWith('https:')) };
 }
 
