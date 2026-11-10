@@ -367,7 +367,9 @@ function reopenAcceptedReviews(p: Project, path: string) {
   for (const t of p.tasks) {
     if (t.review?.state !== 'accepted') continue;
     if (path === 'CONTRACT.md' || path.startsWith(t.folder)) {
-      t.review = { state: 'submitted', findings: [], fingerprint: '', at: Date.now() };
+      // Keep the merged record: main/ still holds that content, so the next merge can
+      // refuse to silently overwrite a merged copy the owner changed.
+      t.review = { state: 'submitted', findings: [], fingerprint: '', at: Date.now(), merged: t.review.merged };
     }
   }
 }
@@ -379,7 +381,7 @@ export function submitTaskForReview(state: AppState, projectId: string, userId: 
     if (t.assigneeId !== userId && !isOwner(p, userId)) return 'That task is not yours.';
     if (t.review?.state === 'accepted') return 'This task is already merged.';
     if (t.status !== 'done') return 'Mark the task done before submitting it for merge.';
-    t.review = { state: 'submitted', findings: [], fingerprint: '', at: Date.now() };
+    t.review = { state: 'submitted', findings: [], fingerprint: '', at: Date.now(), merged: t.review?.merged };
   });
 }
 
@@ -392,15 +394,20 @@ export function runIntegrationReview(state: AppState, projectId: string, userId:
     if (!t.review) return 'The teammate has not submitted this task yet.';
     if (t.review.state === 'accepted') return 'This task is already merged.';
     const findings = integrationCheck(p.files['CONTRACT.md'] ?? '', p.files, t.folder);
-    t.review = { state: findings.length ? 'changes_requested' : 'ready', findings, fingerprint: reviewFingerprint(p.fileRevs ?? {}, t.folder), at: Date.now() };
+    t.review = { state: findings.length ? 'changes_requested' : 'ready', findings, fingerprint: reviewFingerprint(p.fileRevs ?? {}, t.folder), at: Date.now(), merged: t.review.merged };
   });
 }
 
 /**
- * Owner-only: accept the merge. Refused while mismatches are open, and refused when the
- * folder changed after the last clean check (the review is stale and must be re-run).
+ * Owner-only: accept the merge and copy the checked folder into the main folder (PRD F3/F6):
+ * every file <folder>/<name> lands at main/<folder>/<name>, so accepted work from all
+ * teammates combines into one owner-visible tree while drafts stay in teammate folders.
+ * Refused while mismatches are open, and refused when the folder changed after the last
+ * clean check (the review is stale and must be re-run). A merged copy the owner edited
+ * since the last merge is never silently overwritten: the merge is refused unless the
+ * owner passes force to replace it.
  */
-export function acceptTaskMerge(state: AppState, projectId: string, userId: string, taskId: string): Result {
+export function acceptTaskMerge(state: AppState, projectId: string, userId: string, taskId: string, opts: { force?: boolean } = {}): Result {
   return mut(state, projectId, (p) => {
     if (!isOwner(p, userId)) return 'Only the owner can merge.';
     const t = p.tasks.find((x) => x.id === taskId);
@@ -412,7 +419,19 @@ export function acceptTaskMerge(state: AppState, projectId: string, userId: stri
     if (r.fingerprint !== reviewFingerprint(p.fileRevs ?? {}, t.folder)) return 'The folder or the contract changed since the last check. Run the integration check again.';
     const snapshot: Record<string, string> = {};
     for (const [path, content] of Object.entries(p.files)) if (path.startsWith(t.folder)) snapshot[path] = content;
-    t.review = { ...r, state: 'accepted', at: Date.now(), snapshot };
+    if (!opts.force && r.merged) {
+      const changed = Object.entries(r.merged).filter(([path, content]) => p.files[path] !== undefined && p.files[path] !== content).map(([path]) => path);
+      if (changed.length) return `The merged copy ${changed.join(', ')} was changed after the last merge. It is kept; merge again with overwrite to replace it.`;
+    }
+    if (!p.fileRevs) p.fileRevs = {};
+    const merged: Record<string, string> = {};
+    for (const [path, content] of Object.entries(snapshot)) {
+      const target = `main/${path}`;
+      p.files[target] = content;
+      p.fileRevs[target] = (p.fileRevs[target] ?? 0) + 1;
+      merged[target] = content;
+    }
+    t.review = { ...r, state: 'accepted', at: Date.now(), snapshot, merged };
   });
 }
 
