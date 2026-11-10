@@ -106,7 +106,7 @@ describe('ai access and owner key', () => {
   });
   it('no key ever appears in state or storage', () => {
     const { state, pid } = teamState();
-    keyring.set('u-hanuma', 'Gemini', 'sk-test-SECRET1234');
+    keyring.set('u-hanuma', 'Gemini', { key: 'sk-test-SECRET1234', endpointId: 'gemini', model: 'm' });
     const s2 = ok(setAiAccess(state, pid, 'u-hanuma', { kind: 'own', provider: 'Gemini' })).state;
     let stored = '';
     save(s2, { setItem: (_k, v) => { stored = v; } });
