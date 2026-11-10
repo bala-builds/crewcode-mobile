@@ -319,6 +319,8 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   const [tab, setTabState] = useState<Tab>((hashParams().get('tab') as Tab) || tabMemory.get(pid) || 'chat');
   const setTab = (t: Tab) => { tabMemory.set(pid, t); setTabState(t); };
   const [draft, setDraftState] = useState(() => draftMemory.get(pid) ?? '');
+  const [suggest, setSuggest] = useState<{ proposal: { op: string; args: Record<string, unknown> }; consequence: string } | null>(null);
+  const [suggestNote, setSuggestNote] = useState<string | null>(null);
   const setDraft = (d: string) => { draftMemory.set(pid, d); persistDrafts(); setDraftState(d); };
   const [sheet, setSheet] = useState<null | 'team' | 'skills'>((hashParams().get('sheet') as 'team' | 'skills') || null); const [q, setQ] = useState(''); const [open, setOpen] = useState<string | null>(null);
   const [thread, setThread] = useState<string | null>(null);
@@ -393,8 +395,31 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
       {tab === 'tasks' && <TasksView p={p} nameOf={nameOf} onStatus={(id, s) => actOp('setTaskStatus', { projectId: pid, taskId: id, status: s }, pid)} actOp={(n, a) => actOp(n, a, pid)} err={err} />}
       {tab === 'chat' && (
         <div className="composer">
+          {suggest && (
+            // Suggestion preview: proposed by the local Needle model, validated for shape.
+            // It runs ONLY via this Run button through the normal gated actOp path.
+            // Approvals are never suggested - those stay on the owner's native UI.
+            <div className="card" role="region" aria-label="Suggested action">
+              <strong>Suggested action (local model):</strong>
+              <div>{suggest.consequence}</div>
+              <div className="muted">{(() => { const eff = suggest.proposal.op === 'createProject' ? suggest.proposal.args : { ...suggest.proposal.args, projectId: pid }; return suggest.proposal.op + '(' + Object.entries(eff).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ') + ')'; })()}</div>
+              <div className="row">
+                <button className="small primary" onClick={async () => { const pr = suggest.proposal; setSuggest(null); await actOp(pr.op, pr.op === 'createProject' ? pr.args : { ...pr.args, projectId: pid }, pr.op === 'createProject' ? undefined : pid); }}>Run</button>
+                <button className="small" onClick={() => setSuggest(null)}>Dismiss</button>
+              </div>
+            </div>
+          )}
+          {suggestNote && <div className="muted">{suggestNote}</div>}
           <textarea aria-label="Message" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={owner || activeThread ? 'Message the AI' : 'No task assigned yet'} />
           <button className="primary" onClick={async () => { const r = await actOp('postPrompt', { projectId: pid, text: draft, taskId: activeThread }, pid); if (r?.ok) setDraft(''); }}>Send</button>
+          <button className="small" onClick={async () => {
+            setSuggest(null); setSuggestNote(null);
+            const r = await actOp('suggestAction', { projectId: pid, text: draft }, pid);
+            if (!r?.ok) { setSuggestNote('Suggestions unavailable on this server.'); return; }
+            const d = r.data as { proposal: { op: string; args: Record<string, unknown> } | null; consequence?: string; note?: string };
+            if (d.proposal) setSuggest({ proposal: d.proposal, consequence: d.consequence ?? '' });
+            else setSuggestNote(d.note ?? 'No confident suggestion.');
+          }}>Suggest</button>
         </div>
       )}
       <div className="tabs" role="tablist">
@@ -744,4 +769,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-                                                                                }
+}
