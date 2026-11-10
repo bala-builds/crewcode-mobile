@@ -1,15 +1,14 @@
 // Loopback-only dev API. Caller ids are TEST identities, not authenticated accounts.
 import http from 'node:http';
-import fs from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 import { Api } from '../src/server/api';
-import { authFromEnv, startGithubSignIn, finishGithubSignIn, getSession, destroySession, sessionIdFromCookie, clearSessionCookie } from './auth';
+import { storageFromEnv, storageStatus } from './storage';
+import { authFromEnv, startGithubSignIn, finishGithubSignIn, getSession, destroySession, sessionIdFromCookie, clearSessionCookie, stateFromCookie } from './auth';
 import type { AppState } from '../src/core/types';
 
-const FILE = process.env.CREWCODE_DATA ?? new URL('./data.json', import.meta.url).pathname;
-let initial: AppState | undefined;
-try { initial = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { /* first run */ }
-const api = new Api(initial, (s) => fs.writeFileSync(FILE, JSON.stringify(s)));
+const storage = storageFromEnv(process.env);
+const initial: AppState | undefined = storage.load();
+const api = new Api(initial, (s) => storage.save(s));
 const MAX_BYTES = 1_000_000;
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = 300; // One loopback dev client; not a hosted multi-user limiter.
@@ -32,18 +31,18 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1');
   const session = getSession(sessionIdFromCookie(req.headers.cookie));
   if (req.method === 'GET' && url.pathname === '/api/auth/status') {
-    send(res, { status: 200, body: { ok: true, githubSignIn: authCfg ? 'configured' : 'not-configured', session: session ? { githubLogin: session.login } : null } });
+    send(res, { status: 200, body: { ok: true, githubSignIn: authCfg ? 'configured' : 'not-configured', session: session ? { githubLogin: session.login } : null, ...storageStatus(storage) } });
     return;
   }
   if (req.method === 'GET' && url.pathname === '/api/auth/github') { send(res, startGithubSignIn(authCfg)); return; }
   if (req.method === 'GET' && url.pathname === '/api/auth/github/callback') {
-    void finishGithubSignIn(authCfg, { code: url.searchParams.get('code') ?? undefined, state: url.searchParams.get('state') ?? undefined }, fetch as never)
+    void finishGithubSignIn(authCfg, { code: url.searchParams.get('code') ?? undefined, state: url.searchParams.get('state') ?? undefined }, fetch as never, undefined, stateFromCookie(req.headers.cookie))
       .then((r) => send(res, r)).catch(() => reply(500, { ok: false, error: 'Server error.' }));
     return;
   }
   if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
     destroySession(sessionIdFromCookie(req.headers.cookie));
-    send(res, { status: 200, body: { ok: true }, setCookie: clearSessionCookie() });
+    send(res, { status: 200, body: { ok: true }, setCookie: clearSessionCookie(!!authCfg && authCfg.callbackUrl.startsWith('https:')) });
     return;
   }
   if (req.method !== 'POST' || req.url !== '/api') { reply(404, { ok: false, error: 'Not found.' }); return; }
