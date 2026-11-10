@@ -432,7 +432,8 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   const [suggest, setSuggest] = useState<{ proposal: { op: string; args: Record<string, unknown> }; consequence: string } | null>(null);
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
   const setDraft = (d: string) => { draftMemory.set(pid, d); persistDrafts(); setDraftState(d); };
-  const [sheet, setSheet] = useState<null | 'team' | 'skills' | 'overview'>((hashParams().get('sheet') as 'team' | 'skills') || null); const [q, setQ] = useState(''); const [open, setOpen] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<null | 'team' | 'skills' | 'overview' | 'notif'>((hashParams().get('sheet') as 'team' | 'skills') || null); const [q, setQ] = useState(''); const [open, setOpen] = useState<string | null>(null);
+  const [notifSeen, setNotifSeen] = useState(() => { try { return Number(localStorage.getItem(`notifSeen:${me.id}:${pid}`)) || 0; } catch { return 0; } });
   const [thread, setThread] = useState<string | null>(null);
   const [backupJson, setBackupJson] = useState('');
   const editKey = (path: string) => `${me.id}:${pid}:${path}`;
@@ -443,6 +444,18 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   // edit conflicts instead of overwriting - the same path as a manual reload.
   const verRef = useRef<number | null>(null);
   useEffect(() => { if (p?.stateVersion != null) verRef.current = p.stateVersion; }, [p?.stateVersion]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSheet(null);
+      if (e.ctrlKey || e.metaKey) {
+        const order: Tab[] = ['chat', 'code', 'preview', 'tasks', 'files', 'team', 'settings'];
+        const i = Number(e.key) - 1;
+        if (i >= 0 && i < order.length) { e.preventDefault(); setTab(order[i]); clearErr(); }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!checkVersion || !pollMs) return;
     const t = setInterval(async () => {
@@ -456,6 +469,10 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   if (!p) return <div className="screen">Loading...</div>;
   const owner = p.role === 'owner';
   const nameOf = (id: string) => (id === 'ai' ? 'AI' : p.names[id] ?? 'Unknown');
+  const notifSeenKey = `notifSeen:${me.id}:${pid}`;
+  const events = p.messages.filter((m) => m.kind !== 'prompt');
+  const unread = events.filter((m) => m.at > notifSeen).length;
+  const openNotif = () => { setSheet('notif'); const latest = events.length ? events[events.length - 1].at : Date.now(); setNotifSeen(latest); try { localStorage.setItem(notifSeenKey, String(latest)); } catch { /* ignore */ } };
   const tasks = p.tasks;
   const activeThread = owner ? thread : (thread ?? tasks[0]?.id ?? null);
   const msgs = owner && activeThread ? p.messages.filter((m) => m.taskId === activeThread) : p.messages;
@@ -468,6 +485,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
         <div className="title">{p.name}</div>
         <span className={'tag ' + (owner ? 'owner' : '')}>{owner ? 'owner' : 'teammate'}</span>
         <button className="small" onClick={() => setSheet('team')}>Team</button>
+        <button className="small" aria-label="Notifications" onClick={openNotif}>Alerts{unread > 0 ? ` (${unread})` : ''}</button>
         <button className="small mob-only" onClick={() => setSheet('overview')}>Overview</button>
       </div>
       <div className="search">
@@ -543,6 +561,19 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
       {sheet === 'team' && <TeamSheet p={p} user={me.id} nameOf={nameOf} actOp={(n, a) => actOp(n, a, pid)} close={() => setSheet(null)} err={err} backupJson={backupJson} setBackupJson={setBackupJson} />}
       {sheet === 'skills' && <SkillsSheet p={p} user={me.id} q={q} setQ={setQ} actOp={(n, a) => actOp(n, a, pid)} pid={pid} close={() => setSheet(null)} err={err} />}
       {sheet === 'overview' && <div className="sheet-bg" onClick={() => setSheet(null)}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Project overview"><RightRail p={p} me={me} nameOf={nameOf} go={(t) => { setTab(t); setSheet(null); }} manageTools={() => setSheet('skills')} /></div></div>}
+      {sheet === 'notif' && (
+        <div className="sheet-bg" onClick={() => setSheet(null)}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Notifications">
+          <h2>Notifications</h2>
+          {events.length === 0 && <div className="empty">No activity yet. AI plans, builds and errors show up here.</div>}
+          {events.slice(-12).reverse().map((m) => (
+            <div key={m.id} className="card">
+              <div className="muted">{new Date(m.at).toLocaleString()} · {m.kind === 'ai_build' ? (m.simulated === false ? 'AI build' : 'simulated build') : m.kind === 'ai_error' ? 'build error' : m.kind === 'ai_plan' ? 'plan' : 'system'}</div>
+              <div>{m.text}</div>
+              {m.files && m.files.length > 0 && <div className="row wrap" style={{ marginTop: 6 }}>{m.files.map((f) => <button key={f} className="small" onClick={() => { setSheet(null); setOpen(f); setTab('code'); }}>{f}</button>)}</div>}
+            </div>
+          ))}
+        </div></div>
+      )}
     </div>
     <RightRail p={p} me={me} nameOf={nameOf} go={setTab} manageTools={() => setSheet('skills')} />
     </div>
@@ -643,6 +674,17 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
   const hlRef = useRef<HTMLPreElement>(null);
   const [conflict, setConflict] = useState<{ mine: string } | null>(null);
   const [adding, setAdding] = useState(false); const [newName, setNewName] = useState(''); const [newErr, setNewErr] = useState<string | null>(null);
+  // Open-file tabs: every focused file stays open until closed; unsaved drafts mark a dot.
+  const [tabs, setTabs] = useState<string[]>(() => (path ? [path] : []));
+  useEffect(() => { if (path && !tabs.includes(path)) setTabs((ts) => [...ts, path]); }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openTab = (f: string) => { setOpen(f); clearErr(); };
+  const closeTab = (f: string) => {
+    const next = tabs.filter((t) => t !== f);
+    setTabs(next);
+    if (f === path) setOpen(next[next.length - 1] ?? null);
+  };
+  const isDirtyTab = (f: string) => { const d = editMemory.get(editKey(f)); return !!d && d.text !== (p.files[f] ?? ''); };
+  const history = p.messages.filter((m) => m.kind === 'ai_build' && m.files && m.files.length > 0).slice(-8).reverse();
   // Folders this user may create files in, derived from the redacted view (mirrors the server gate).
   const roots = p.role === 'owner' ? [''] : [...new Set(p.tasks.map((t) => t.folder))];
   const createFile = async () => {
@@ -697,8 +739,31 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
   const serverRev = p.fileRevs?.[path] ?? 0;
   return (
     <div className="screen">
-      <div className="files">{files.map((f) => <button key={f} className={'chip small' + (f === path ? ' on' : '')} onClick={() => { setOpen(f); clearErr(); }}>{f}</button>)}</div>
+      <div className="files ftree" role="tree" aria-label="File explorer">
+        {files.filter((f) => !f.includes('/')).map((f) => (
+          <button key={f} className={'chip small frow rootfile' + (f === path ? ' on' : '')} onClick={() => openTab(f)}>{isDirtyTab(f) && <span className="fdot" />}{f}</button>
+        ))}
+        {[...new Set(files.filter((f) => f.includes('/')).map((f) => f.slice(0, f.lastIndexOf('/') + 1)))].map((dir) => (
+          <details key={dir} open>
+            <summary>{dir}</summary>
+            {files.filter((f) => f.startsWith(dir)).map((f) => (
+              <button key={f} className={'chip small frow' + (f === path ? ' on' : '')} onClick={() => openTab(f)}>{isDirtyTab(f) && <span className="fdot" />}{f.slice(dir.length)}</button>
+            ))}
+          </details>
+        ))}
+        {files.length === 0 && <div className="empty">No files match "{fq}".</div>}
+      </div>
       {newFileRow}
+      {tabs.length > 0 && (
+        <div className="ftabs" aria-label="Open files">
+          {tabs.map((f) => (
+            <span key={f} className={'ftab' + (f === path ? ' on' : '')}>
+              <button onClick={() => openTab(f)}>{isDirtyTab(f) && <span className="fdot" />}{f.slice(f.lastIndexOf('/') + 1)}</button>
+              <button className="fx" aria-label={'Close ' + f} onClick={() => closeTab(f)}>x</button>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="row spread"><strong style={{ overflowWrap: 'anywhere' }}>{path}</strong><span className="tag">{editable ? 'editable' : 'read only'}</span></div>
       {!editable && <div className="note">You can read this file. Only the owner can change it.</div>}
       {conflict && (
@@ -718,9 +783,25 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
         <pre className="editor editor-hl" aria-hidden="true" ref={hlRef}>{highlight(text, path).map((tk, i) => tk.t === 'plain' ? tk.s : <span key={i} className={'tk-' + tk.t}>{tk.s}</span>)}{text.endsWith('\n') ? ' ' : ''}</pre>
         <textarea className="editor editor-input" aria-label={'Contents of ' + path} value={text} readOnly={!editable}
           onScroll={(e) => { const t = e.currentTarget; if (hlRef.current) { hlRef.current.scrollTop = t.scrollTop; hlRef.current.scrollLeft = t.scrollLeft; } }}
+          onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (editable && dirty) void save(); } }}
           onChange={(e) => { setText(e.target.value); setDirty(true); clearErr(); editMemory.set(editKey(path), { text: e.target.value, rev }); persistEdits(); }} />
       </div>
       <Err text={err} />
+      {history.length > 0 && (
+        <details className="changes">
+          <summary>Change history ({history.length})</summary>
+          {history.map((m) => (
+            <div key={m.id} className="card" style={{ marginTop: 8 }}>
+              <div className="muted">{new Date(m.at).toLocaleString()} · {m.simulated === false ? 'AI build' : 'simulated build'}{m.taskId && p.tasks.find((t) => t.id === m.taskId) ? ' · ' + p.tasks.find((t) => t.id === m.taskId)!.title : ''}</div>
+              <div className="row wrap" style={{ marginTop: 6 }}>
+                {m.files!.map((f) => (
+                  <button key={f} className="small" onClick={() => openTab(f)}>{f}{m.diff?.[f] ? ` +${m.diff[f].added} -${m.diff[f].removed}` : ''}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </details>
+      )}
       {findings.length > 0 && <div className="note">Integration check: {findings.map((f) => `${f.name} in ${f.path} is not in CONTRACT.md`).join('. ')}</div>}
     </div>
   );
@@ -1079,4 +1160,4 @@ function DiscoverView() {
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
     </div>
   );
-  }
+    }
