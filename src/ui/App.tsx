@@ -647,11 +647,12 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       {items.map((it) => {
         const added = p.skills.find((s) => s.id === it.id);
         return (
-          <div key={it.id} className="card"><div className="row spread"><strong>{it.label}</strong><span className="tag">{it.kind}</span></div>
+          <div key={it.id} className="card"><div className="row spread"><strong>{it.label}</strong><span className="tag">{it.hosted ? 'hosted' : it.kind}</span></div>
             <p className="muted">{it.summary}</p>
             <div className="muted">Permissions: {it.permissions.join('; ')}</div>
             <div className="row wrap" style={{ marginTop: 8 }}>
-              {!added && <button className="small primary" onClick={() => actOp('addSkill', { projectId: pid, skillId: it.id })}>Add</button>}
+              {!added && !it.hosted && <button className="small primary" onClick={() => actOp('addSkill', { projectId: pid, skillId: it.id })}>Add</button>}
+              {it.hosted && <span className="tag">hosted in Claude - not addable in this build</span>}
               {added && <span className="tag">{added.approvedByOwner ? 'approved' : 'waiting for owner'}</span>}
               {added && !added.approvedByOwner && owner && <button className="small" onClick={() => actOp('approveSkill', { projectId: pid, skillId: it.id })}>Approve</button>}
               {added && (owner || added.addedBy === user) && <button className="small danger" onClick={() => { setOutput(null); actOp('removeSkill', { projectId: pid, skillId: it.id }); }}>Remove</button>}
