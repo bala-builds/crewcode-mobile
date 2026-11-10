@@ -9,6 +9,7 @@ import { buildPreviewDoc, buildBackendDoc, backendPathFor } from '../core/previe
 import { integrationCheck, reviewFingerprint } from '../core/contract';
 import { driveStatus } from '../core/drive';
 import { HttpClient, op, type ClientData, type ProjectView } from './client';
+import { highlight } from './highlight';
 
 /**
  * The phone UI talks ONLY to the dev API through ClientData (HttpClient in production,
@@ -618,6 +619,7 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
   const files = fq.trim() ? filesAll.filter((f) => f.toLowerCase().includes(fq.trim().toLowerCase())) : filesAll;
   const path = open && filesAll.includes(open) ? open : filesAll.find((f) => canWriteView(p, f)) ?? filesAll[0] ?? null;
   const [text, setText] = useState(''); const [dirty, setDirty] = useState(false); const [rev, setRev] = useState(0);
+  const hlRef = useRef<HTMLPreElement>(null);
   const [conflict, setConflict] = useState<{ mine: string } | null>(null);
   const [adding, setAdding] = useState(false); const [newName, setNewName] = useState(''); const [newErr, setNewErr] = useState<string | null>(null);
   // Folders this user may create files in, derived from the redacted view (mirrors the server gate).
@@ -691,7 +693,12 @@ function CodeView({ p, open, setOpen, editKey, onSave, reload, err, clearErr }: 
         </div>
       )}
       <div className="row" style={{ marginBottom: 8 }}><button className="primary" disabled={!editable || !dirty} onClick={save}>Save</button>{dirty && <span className="muted">Unsaved changes</span>}</div>
-      <textarea className="editor" aria-label={'Contents of ' + path} value={text} readOnly={!editable} onChange={(e) => { setText(e.target.value); setDirty(true); clearErr(); editMemory.set(editKey(path), { text: e.target.value, rev }); persistEdits(); }} />
+      <div className="editor-wrap">
+        <pre className="editor editor-hl" aria-hidden="true" ref={hlRef}>{highlight(text, path).map((tk, i) => tk.t === 'plain' ? tk.s : <span key={i} className={'tk-' + tk.t}>{tk.s}</span>)}{text.endsWith('\n') ? ' ' : ''}</pre>
+        <textarea className="editor editor-input" aria-label={'Contents of ' + path} value={text} readOnly={!editable}
+          onScroll={(e) => { const t = e.currentTarget; if (hlRef.current) { hlRef.current.scrollTop = t.scrollTop; hlRef.current.scrollLeft = t.scrollLeft; } }}
+          onChange={(e) => { setText(e.target.value); setDirty(true); clearErr(); editMemory.set(editKey(path), { text: e.target.value, rev }); persistEdits(); }} />
+      </div>
       <Err text={err} />
       {findings.length > 0 && <div className="note">Integration check: {findings.map((f) => `${f.name} in ${f.path} is not in CONTRACT.md`).join('. ')}</div>}
     </div>
@@ -1050,4 +1057,4 @@ function DiscoverView() {
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
     </div>
   );
-}
+      }

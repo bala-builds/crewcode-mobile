@@ -602,6 +602,35 @@ describe('cross-session propagation (two open sessions)', () => {
   });
   const wait = async (ms: number) => { await act(async () => { await new Promise((r) => setTimeout(r, ms)); }); };
 
+  it('code editor renders syntax highlight tokens without breaking editing', async () => {
+    const A = scoped(host);
+    await A.click('Ram');
+    const pid = api.state.projects[0].id;
+    await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
+    await api.call({ as: 'u-ram', op: 'confirmPlanning', args: { projectId: pid, accept: true } });
+    const task = api.state.projects[0].tasks.find((t) => t.assigneeId === 'u-seeta')!;
+    await api.call({ as: 'u-seeta', op: 'runBuild', args: { projectId: pid, taskId: task.id } });
+    await A.clickCard('Habit Tracker');
+    await A.clickTab('Code');
+    await A.click('home/index.html');
+    const hl = host.querySelector('pre.editor-hl')!;
+    expect(hl).not.toBeNull();
+    expect(hl.querySelectorAll('span.tk-tag').length).toBeGreaterThan(2); // <html>, <body>, ...
+    expect(hl.querySelectorAll('span.tk-attr').length).toBeGreaterThan(0); // style=, id=
+    expect(hl.querySelectorAll('span.tk-str').length).toBeGreaterThan(0); // attribute values
+    // The textarea still holds the raw text and accepts edits.
+    const ta = host.querySelector('textarea.editor') as HTMLTextAreaElement;
+    expect(ta.value).toContain('<h1>Habit Tracker</h1>');
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!;
+      setter.call(ta, ta.value + '\n<!-- my edit -->');
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await flush();
+    expect((host.querySelector('textarea.editor') as HTMLTextAreaElement).value).toContain('my edit');
+    expect(A.text()).toContain('Unsaved changes');
+  });
+
   it('build results show an expandable log with shortcuts, and Preview shows last-build info', async () => {
     const A = scoped(host);
     await A.click('Ram');
