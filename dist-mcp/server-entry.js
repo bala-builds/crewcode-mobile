@@ -86,6 +86,7 @@ var CATALOG = [
 		id: "claude-design",
 		label: "Claude Design (Anthropic)",
 		kind: "prebuilt",
+		hosted: true,
 		summary: "Verified: Anthropic's hosted Claude Design feature (claude.com/product/design) - chat-to-design artifacts with on-canvas editing, in Claude and Claude Code. A hosted product, not an installable prebuilt, so it cannot run inside this build. No open-source equivalent confirmed; Anthropic's frontend-design skill (github.com/anthropics/skills) is an unconfirmed candidate.",
 		permissions: ["Read the shared contract", "Write inside the member's own folder"],
 		verified: false,
