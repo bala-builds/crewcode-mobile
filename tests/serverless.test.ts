@@ -236,4 +236,20 @@ describe('serverless handlers', () => {
     const list = await apiPost(deps2, fin.setCookie, { as: 'x', op: 'listProjects' });
     expect(JSON.stringify(list.body)).toContain('Phone App');
   });
+
+  it('without durable storage: sign-in callback fails closed 503, logout still clears the cookie', async () => {
+    const gh = fakeGitHub();
+    const deps = makeDeps(gh, withOAuth(gh, { login: 'balu', id: 42 }));
+    const noStore = { ...deps, stateRepo: null };
+    const start = startSignIn(noStore);
+    expect(start.status).toBe(302);
+    const state = new URL(start.location!).searchParams.get('state')!;
+    const fin = await finishSignIn(noStore, { code: 'c', state }, start.setCookie);
+    expect(fin.status).toBe(503);
+    expect(JSON.stringify(fin.body)).toContain('Durable storage is not configured');
+    // State was NOT consumed: the same signed state still verifies (replay-safe fail).
+    const lo = await logout(noStore, 'crewcode_session=abc');
+    expect(lo.status).toBe(200);
+    expect(lo.setCookie).toContain('Max-Age=0');
+  });
 });
