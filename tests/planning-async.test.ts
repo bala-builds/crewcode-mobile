@@ -25,7 +25,7 @@ describe('async planning boundary (delayed provider)', () => {
     expect(proj(api, pid).planning).toBe(true);
     const cancel = api.call({ as: 'u-ram', op: 'cancelPlanning', args: { projectId: pid } });
     expect(cancel.ok).toBe(true);
-    release({ ok: true, plan: [{ title: 'Late', detail: 'late', assigneeId: 'u-seeta', folder: 'frontend/' }] });
+    release({ ok: true, plan: [{ title: 'Late', detail: 'late', assigneeId: 'u-seeta', folder: 'home/' }] });
     const done = await run;
     expect(done.ok).toBe(true);
     expect((done as any).data.discarded).toBe(true);
