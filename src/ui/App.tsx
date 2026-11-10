@@ -410,7 +410,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   const [suggest, setSuggest] = useState<{ proposal: { op: string; args: Record<string, unknown> }; consequence: string } | null>(null);
   const [suggestNote, setSuggestNote] = useState<string | null>(null);
   const setDraft = (d: string) => { draftMemory.set(pid, d); persistDrafts(); setDraftState(d); };
-  const [sheet, setSheet] = useState<null | 'team' | 'skills'>((hashParams().get('sheet') as 'team' | 'skills') || null); const [q, setQ] = useState(''); const [open, setOpen] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<null | 'team' | 'skills' | 'overview'>((hashParams().get('sheet') as 'team' | 'skills') || null); const [q, setQ] = useState(''); const [open, setOpen] = useState<string | null>(null);
   const [thread, setThread] = useState<string | null>(null);
   const [backupJson, setBackupJson] = useState('');
   const editKey = (path: string) => `${me.id}:${pid}:${path}`;
@@ -446,6 +446,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
         <div className="title">{p.name}</div>
         <span className={'tag ' + (owner ? 'owner' : '')}>{owner ? 'owner' : 'teammate'}</span>
         <button className="small" onClick={() => setSheet('team')}>Team</button>
+        <button className="small mob-only" onClick={() => setSheet('overview')}>Overview</button>
       </div>
       <div className="search">
         <input aria-label="Search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search skills, MCPs, tools" onFocus={() => q === '' && undefined} />
@@ -519,6 +520,7 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
       </div>
       {sheet === 'team' && <TeamSheet p={p} user={me.id} nameOf={nameOf} actOp={(n, a) => actOp(n, a, pid)} close={() => setSheet(null)} err={err} backupJson={backupJson} setBackupJson={setBackupJson} />}
       {sheet === 'skills' && <SkillsSheet p={p} user={me.id} q={q} setQ={setQ} actOp={(n, a) => actOp(n, a, pid)} pid={pid} close={() => setSheet(null)} err={err} />}
+      {sheet === 'overview' && <div className="sheet-bg" onClick={() => setSheet(null)}><div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Project overview"><RightRail p={p} me={me} nameOf={nameOf} go={(t) => { setTab(t); setSheet(null); }} manageTools={() => setSheet('skills')} /></div></div>}
     </div>
     <RightRail p={p} me={me} nameOf={nameOf} go={setTab} manageTools={() => setSheet('skills')} />
     </div>
@@ -1008,4 +1010,4 @@ function DiscoverView() {
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
     </div>
   );
-}
+      }
