@@ -7,13 +7,14 @@ import type { Member, Task, Project, TestUser } from './types';
  *
  * The deterministic local planner is intentionally shallow: it reads candidate features
  * from the PRD's list and balances them across the team by a rough size estimate (list-line
- * length), greedily assigning each feature in PRD order to the least-loaded teammate.
- * Dependency hints in a bullet ("depends on X", "after X") are copied into the task detail
- * as text only - ordering is NOT enforced anywhere. Real workload estimation and dependency
- * reasoning need the provider path (owner key, approval-gated). The plan is applied as soon
- * as it is produced; there is no owner review/edit step for the split yet.
+ * length - a heuristic, NOT real workload understanding), greedily assigning each feature
+ * in PRD order to the least-loaded teammate. Dependency hints in a bullet ("depends on X",
+ * "after X") become structured task deps: they are validated and the merge of a feature is
+ * refused until every folder it depends on is itself merged. Real workload estimation and
+ * dependency reasoning need the provider path (owner key, approval-gated). Every plan -
+ * provider or fallback - is a proposal: tasks exist only after the owner approves it.
  */
-export interface PlannedTask { title: string; detail: string; assigneeId: string; folder: string }
+export interface PlannedTask { title: string; detail: string; assigneeId: string; folder: string; deps?: string[] }
 
 export function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'feature';
@@ -73,17 +74,22 @@ export function planTasks(project: Pick<Project, 'name' | 'files' | 'members'>, 
     mine.get(best.userId)!.push(f);
     load.set(best.userId, (load.get(best.userId) ?? 0) + f.size);
   }
+  const folderOf = new Map<string, string>();
+  for (const f of feats) {
+    let folder = slugify(f.name) + '/';
+    while (used.has(folder)) folder = folder.slice(0, -1) + '-2/';
+    used.add(folder);
+    folderOf.set(f.name, folder);
+  }
   const out: PlannedTask[] = [];
   for (const m of team) {
     for (const f of mine.get(m.userId)!) {
-      let folder = slugify(f.name) + '/';
-      while (used.has(folder)) folder = folder.slice(0, -1) + '-2/';
-      used.add(folder);
       out.push({
         title: `Build ${f.name}`,
-        detail: `Build the ${f.name} feature end to end - its screens and its backend together - using the shared names in the contract.` + (f.deps.length ? ` Depends on: ${f.deps.join(', ')} - coordinate through the contract; ordering is owner-managed, not enforced.` : ''),
+        detail: `Build the ${f.name} feature end to end - its screens and its backend together - using the shared names in the contract.` + (f.deps.length ? ` Depends on: ${f.deps.join(', ')}.` : ''),
         assigneeId: m.userId,
-        folder,
+        folder: folderOf.get(f.name)!,
+        deps: f.deps.length ? f.deps.map((d) => folderOf.get(d)!).filter(Boolean) : undefined,
       });
     }
     if (mine.get(m.userId)!.length === 0) {
@@ -108,7 +114,22 @@ export function validatePlan(plan: PlannedTask[], members: Member[]): ValidateRe
     const prev = folders.get(t.folder);
     if (prev !== undefined) errors.push(`Folder ${t.folder} is given to more than one task.`);
     folders.set(t.folder, t.assigneeId);
+    if (t.folder === 'shared/') errors.push('shared/ is reserved for owner-written foundations and cannot be a task folder.');
   }
+  // Structured dependencies: every dep must name another task's folder, never the task's own,
+  // and the graph must be acyclic. Bad deps reject the whole plan.
+  for (const t of plan) {
+    for (const d of t.deps ?? []) {
+      if (d === t.folder) errors.push(`Task "${t.title}" depends on its own folder.`);
+      else if (!folders.has(d)) errors.push(`Task "${t.title}" depends on ${d}, which is not a folder in this plan.`);
+    }
+  }
+  const visit = (f: string, stack: string[]): boolean => {
+    if (stack.includes(f)) return false;
+    const t = plan.find((x) => x.folder === f);
+    return (t?.deps ?? []).every((d) => visit(d, [...stack, f]));
+  };
+  for (const t of plan) if (!visit(t.folder, [])) { errors.push(`Dependencies form a cycle at ${t.folder}.`); break; }
   const perPerson = new Map<string, number>();
   for (const t of plan) perPerson.set(t.assigneeId, (perPerson.get(t.assigneeId) ?? 0) + 1);
   for (const m of members) if (!perPerson.has(m.userId)) errors.push('A member has no task.');
@@ -116,7 +137,7 @@ export function validatePlan(plan: PlannedTask[], members: Member[]): ValidateRe
 }
 
 export function toTasks(plan: PlannedTask[], newId: () => string): Task[] {
-  return plan.map((p) => ({ id: newId(), title: p.title, detail: p.detail, assigneeId: p.assigneeId, folder: p.folder, status: 'todo' as const }));
+  return plan.map((p) => ({ id: newId(), title: p.title, detail: p.detail, assigneeId: p.assigneeId, folder: p.folder, deps: p.deps, status: 'todo' as const }));
 }
 
 /** Simulated build output for a task. Writes only inside the task folder. Every feature
