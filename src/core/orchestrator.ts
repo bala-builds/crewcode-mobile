@@ -1,42 +1,61 @@
 import type { Member, Task, Project, TestUser } from './types';
 
 /**
- * SIMULATED AI. Deterministic, no network, no keys. It stands in for the owner's AI so the
- * task flow, scoping and validation can be built and tested. A real provider replaces `planTasks` later.
+ * FEATURE-BASED decomposition. The unit of ownership is a feature (a page, a service or a
+ * capability): each task owns one feature end to end - its screens and its backend together
+ * in one folder. Frontend and backend of the same feature are never split across people.
+ *
+ * The deterministic local planner is intentionally shallow: it reads candidate features
+ * from the PRD's list and splits them contiguously across the team (2 people, 4 features:
+ * first two to the first person; 4 people: one each). Workload estimation and dependency
+ * ordering need the real provider path (owner key, approval-gated); the owner reviews the
+ * split either way before anyone builds.
  */
 export interface PlannedTask { title: string; detail: string; assigneeId: string; folder: string }
 
-const AREAS: { key: string; folder: string; words: string[]; title: string; detail: string }[] = [
-  { key: 'frontend', folder: 'frontend/', words: ['frontend', 'ui', 'screen', 'design', 'web', 'mobile'], title: 'Build the screens', detail: 'Lay out the main screens and wire them to the shared names in the contract.' },
-  { key: 'backend', folder: 'backend/', words: ['backend', 'api', 'server', 'database', 'data'], title: 'Build the API', detail: 'Create the endpoints the screens need. Use API_BASE from the contract.' },
-  { key: 'ai', folder: 'ai/', words: ['ai', 'prompt', 'agent', 'ml'], title: 'Build the AI features', detail: 'Write the prompts and the task flow for the AI parts of the app.' },
-  { key: 'tests', folder: 'tests/', words: ['test', 'qa', 'quality'], title: 'Write tests', detail: 'Cover the main journeys and the access rules.' },
-];
+export function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'feature';
+}
 
-function areaFor(interests: string[]) {
-  const hay = interests.join(' ').toLowerCase();
-  return AREAS.find((a) => a.words.some((w) => hay.includes(w)));
+/** Candidate features from a PRD: bullet or numbered list items ("- Home page: ..."). */
+export function extractFeatures(prd: string): string[] {
+  const out: string[] = [];
+  for (const raw of prd.split('\n')) {
+    const m = raw.trim().match(/^(?:[-*+]|\d+[.)])\s+(.+)$/);
+    if (!m) continue;
+    const name = m[1].split(/[:\u2013\u2014]/)[0].split(' - ')[0].trim();
+    if (name.length >= 2 && name.length <= 60 && !out.includes(name)) out.push(name);
+  }
+  return out;
 }
 
 export function planTasks(project: Pick<Project, 'name' | 'files' | 'members'>, users: TestUser[]): PlannedTask[] {
+  const found = extractFeatures(project.files['PRD.md'] ?? '');
+  const feats = found.length ? found : [project.name];
+  const team = project.members; // teammates only (the caller filters)
+  if (team.length === 0) return [];
+  const nameOf = (id: string) => users.find((u) => u.id === id)?.name ?? id;
+  const per = Math.ceil(feats.length / team.length);
   const used = new Set<string>();
   const out: PlannedTask[] = [];
-  const nameOf = (id: string) => users.find((u) => u.id === id)?.name ?? id;
-  const free = AREAS.filter(() => true);
-  for (const m of project.members) {
-    let area = areaFor(m.interests);
-    if (!area || used.has(area.folder)) area = free.find((a) => !used.has(a.folder));
-    if (!area) {
-      // More members than areas: give a personal folder so each folder still has exactly one owner.
-      const folder = `${nameOf(m.userId).toLowerCase().replace(/[^a-z0-9]+/g, '-')}-work/`;
+  team.forEach((m, i) => {
+    const mine = feats.slice(i * per, (i + 1) * per);
+    for (const f of mine) {
+      let folder = slugify(f) + '/';
+      while (used.has(folder)) folder = folder.slice(0, -1) + '-2/';
       used.add(folder);
-      out.push({ title: 'Take a feature from the owner', detail: 'The owner assigns the specific feature.', assigneeId: m.userId, folder });
-      continue;
+      out.push({
+        title: `Build ${f}`,
+        detail: `Build the ${f} feature end to end - its screens and its backend together - using the shared names in the contract.`,
+        assigneeId: m.userId,
+        folder,
+      });
     }
-    used.add(area.folder);
-    const interest = m.interests[0] ? ` (matched to interest: ${m.interests[0]})` : '';
-    out.push({ title: area.title, detail: area.detail + interest, assigneeId: m.userId, folder: area.folder });
-  }
+    if (mine.length === 0) {
+      // More members than features: give a personal folder so each folder still has exactly one owner.
+      out.push({ title: 'Take a feature from the owner', detail: 'More teammates than features: the owner assigns a feature to this folder.', assigneeId: m.userId, folder: `${slugify(nameOf(m.userId))}-work/` });
+    }
+  });
   return out;
 }
 
@@ -65,16 +84,12 @@ export function toTasks(plan: PlannedTask[], newId: () => string): Task[] {
   return plan.map((p) => ({ id: newId(), title: p.title, detail: p.detail, assigneeId: p.assigneeId, folder: p.folder, status: 'todo' as const }));
 }
 
-/** Simulated build output for a task. Writes only inside the task folder. */
+/** Simulated build output for a task. Writes only inside the task folder. Every feature
+ *  gets a full-stack placeholder: a page plus its backend stub, both referencing shared names. */
 export function simulateBuild(task: Task, projectName: string): Record<string, string> {
   const f = task.folder;
-  if (f === 'frontend/') {
-    return {
-      [`${f}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<!-- @shared PROJECT_NAME -->\n<p>Simulated frontend preview.</p>\n<button onclick="document.body.style.background='#eef'">Tap me</button>\n</body></html>\n`,
-    };
-  }
-  if (f === 'backend/') return { [`${f}server.ts`]: `// @shared API_BASE\nexport const routes = ['/health', '/items'];\n` };
-  if (f === 'ai/') return { [`${f}prompts.md`]: `# Prompts\nUse PROJECT_NAME and keep answers short.\n` };
-  if (f === 'tests/') return { [`${f}smoke.test.ts`]: `// Simulated test file\nexport {};\n` };
-  return { [`${f}README.md`]: `# ${task.title}\n` };
+  return {
+    [`${f}index.html`]: `<!doctype html>\n<html><body style="font-family:sans-serif;margin:0;padding:24px">\n<h1>${projectName}</h1>\n<!-- @shared PROJECT_NAME -->\n<p>Simulated page for: ${task.title}.</p>\n<button onclick="document.body.style.background='#eef'">Tap me</button>\n</body></html>\n`,
+    [`${f}api.ts`]: `// @shared API_BASE\n// Simulated backend for: ${task.title}\nexport const routes = ['/health'];\n`,
+  };
 }
