@@ -602,6 +602,33 @@ describe('cross-session propagation (two open sessions)', () => {
   });
   const wait = async (ms: number) => { await act(async () => { await new Promise((r) => setTimeout(r, ms)); }); };
 
+  it('build results show an expandable log with shortcuts, and Preview shows last-build info', async () => {
+    const A = scoped(host);
+    await A.click('Ram');
+    const pid = api.state.projects[0].id;
+    await api.call({ as: 'u-ram', op: 'assignTasks', args: { projectId: pid } });
+    await api.call({ as: 'u-ram', op: 'confirmPlanning', args: { projectId: pid, accept: true } });
+    const task = api.state.projects[0].tasks.find((t) => t.assigneeId === 'u-seeta')!;
+    await api.call({ as: 'u-seeta', op: 'startTaskRun', args: { projectId: pid, taskId: task.id } });
+    const files: Record<string, string> = {};
+    for (let i = 1; i <= 3; i++) files[task.folder + 'f' + i + '.html'] = '<p>' + i + '</p>';
+    files[task.folder + 'index.html'] = '<h1>app</h1>';
+    await api.call({ as: 'u-seeta', op: 'applyTaskRun', args: { projectId: pid, taskId: task.id, result: { ok: true, message: 'built four files', files }, simulated: true } });
+
+    await A.clickCard('Habit Tracker');
+    // Chat is the default tab: the build message renders collapsed with totals.
+    const log = host.querySelector('details.buildlog');
+    expect(log).not.toBeNull();
+    expect(log!.querySelector('summary')!.textContent).toContain('4 changed files (+4 -0)');
+    // Shortcuts exist and work: Open Preview moves to the Preview tab.
+    await A.click('Open Preview');
+    expect(A.text()).toContain('Last build:');
+    expect(A.text()).toContain('4 file(s) changed (simulated)');
+    await A.clickTab('Chat');
+    await A.click('View Tasks');
+    expect([...host.querySelectorAll('[role="tab"]')].find((t) => t.getAttribute('aria-selected') === 'true')!.textContent).toBe('Tasks');
+  });
+
   it('a teammate session sees the owner\'s save without a reload, and keeps her unsaved draft', async () => {
     // Remount session A with fast polling; A = Ram (owner).
     act(() => root.unmount()); host.remove();
