@@ -13,11 +13,13 @@ export type Capability = 'read_scope' | 'write_scope' | 'network' | 'execute';
 export interface SkillItem {
   id: string; label: string; kind: 'skill' | 'mcp' | 'prebuilt';
   summary: string; permissions: string[]; verified: false;
+  /** Hosted third-party service: shown as information only, never installable/enableable from this build. */
+  hosted?: boolean;
   /** What the item says it needs. The runner enforces this: anything beyond local in-scope reads cannot run in this build. */
   caps: Capability[];
 }
 export const CATALOG: SkillItem[] = [
-  { id: 'claude-design', label: 'Claude Design (Anthropic)', kind: 'prebuilt', summary: 'Verified: Anthropic\'s hosted Claude Design feature (claude.com/product/design) - chat-to-design artifacts with on-canvas editing, in Claude and Claude Code. A hosted product, not an installable prebuilt, so it cannot run inside this build. No open-source equivalent confirmed; Anthropic\'s frontend-design skill (github.com/anthropics/skills) is an unconfirmed candidate.', permissions: ['Read the shared contract', 'Write inside the member\'s own folder'], verified: false, caps: ['read_scope', 'write_scope'] },
+  { id: 'claude-design', label: 'Claude Design (Anthropic)', kind: 'prebuilt', hosted: true, summary: 'Verified: Anthropic\'s hosted Claude Design feature (claude.com/product/design) - chat-to-design artifacts with on-canvas editing, in Claude and Claude Code. A hosted product, not an installable prebuilt, so it cannot run inside this build. No open-source equivalent confirmed; Anthropic\'s frontend-design skill (github.com/anthropics/skills) is an unconfirmed candidate.', permissions: ['Read the shared contract', 'Write inside the member\'s own folder'], verified: false, caps: ['read_scope', 'write_scope'] },
   { id: 'cloudflare-security', label: 'Cloudflare security MCP', kind: 'mcp', summary: 'Verified target: Cloudflare\'s official Cloudflare API MCP server at https://mcp.cloudflare.com/mcp - one remote server covering the whole Cloudflare API including Zero Trust and security products (developers.cloudflare.com/agents/model-context-protocol). Connect via OAuth from an MCP client; needs your Cloudflare account. Not runnable in this build.', permissions: ['Network access to Cloudflare', 'Your Cloudflare account'], verified: false, caps: ['network', 'execute'] },
   { id: 'secret-scan', label: 'Local secret scan', kind: 'prebuilt', summary: 'Deterministic local scan of one in-scope file for key-shaped strings, findings masked. Runs here, no network.', permissions: ['Read files in the member\'s own folder'], verified: false, caps: ['read_scope'] },
   { id: 'code-review', label: 'Local shared-name check', kind: 'skill', summary: 'Deterministic local check of one in-scope file: lists @shared names and compares them to CONTRACT.md. Not a general code review. Runs here, no network.', permissions: ['Read files in the member\'s own folder'], verified: false, caps: ['read_scope'] },
