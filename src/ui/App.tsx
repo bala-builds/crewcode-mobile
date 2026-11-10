@@ -140,6 +140,8 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
   const [view, setView] = useState<ProjectView | null>(null);
   const [screen, setScreen] = useState<Screen>(hashParams().get('demo') ? { name: 'welcome' } : (loadMe() ? { name: 'home' } : { name: 'welcome' }));
   const [err, setErr] = useState<string | null>(null);
+  const [authInfo, setAuthInfo] = useState<Record<string, unknown> | null>(null);
+  const deployed = !!authInfo && authInfo.deployment === 'vercel-serverless';
   const go = (s: Screen) => { setErr(null); setScreen(s); };
 
   // Screenshot/test helper: #demo=ram|seeta&tab=code. Seeds a planned, built project via the API.
@@ -158,8 +160,18 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
         if (!cancelled) { setMe(me0); await refreshFor(me0.id, pid); go({ name: 'workspace', pid }); }
         return;
       }
+      // Deployment detection only applies to the real HTTP client; injected
+      // clients (tests, offline demo) have no server to ask.
+      let info: Record<string, unknown> | null = null;
+      if (!client) {
+        try { const r = await fetch('/api/auth/status'); info = r.ok ? await r.json() : null; } catch { info = null; }
+      }
+      if (cancelled) return;
+      setAuthInfo(info);
+      const isDeployed = !!info && info.deployment === 'vercel-serverless';
+      if (isDeployed && !info!.session) { setMe(null); return; } // server-enforced identity: no roster, no stale local identity without a session
       const u = await cli.call({ as: 'u-ram', op: 'listUsers' });
-      if (!cancelled) { if (u.ok) setUsers(u.data); else setErr(u.error); }
+      if (!cancelled) { if (u.ok) setUsers(u.data); else if (!isDeployed) setErr(u.error); }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,9 +207,11 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
 
   return (
     <div className="app">
-      <div className="banner">Test identities only. Not a login. Real sign-in is built last. AI answers are simulated until you add your own key; previews run real web files.</div>
+      <div className="banner">{deployed
+        ? 'AI answers are simulated until you add your own key; previews run real web files.'
+        : 'Test identities only. Not a login. Real sign-in is built last. AI answers are simulated until you add your own key; previews run real web files.'}</div>
       {err && screen.name !== 'workspace' && <div style={{ padding: 16 }}><Err text={err} /><button onClick={() => window.location.reload()}>Retry connection</button></div>}
-      {screen.name === 'welcome' && <Welcome users={users} pick={(u) => { setMe(u); go({ name: 'home' }); }}
+      {screen.name === 'welcome' && <Welcome users={users} deployed={deployed} signIn={authInfo?.githubSignIn === 'configured'} session={!!authInfo?.session} pick={(u) => { setMe(u); go({ name: 'home' }); }}
         register={async (name) => {
           const r = await cli.call({ as: 'u-ram', op: 'registerName', args: { name } });
           if (!r.ok) return r.error;
@@ -247,23 +261,30 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
 
 function Err({ text }: { text: string | null }) { return text ? <div className="err" role="alert">{text}</div> : null; }
 
-function Welcome({ users, pick, register }: { users: UserInfo[]; pick: (u: Me) => void; register: (name: string) => Promise<string | null> }) {
+function Welcome({ users, pick, register, deployed, signIn, session }: { users: UserInfo[]; pick: (u: Me) => void; register: (name: string) => Promise<string | null>; deployed?: boolean; signIn?: boolean; session?: boolean }) {
   const [name, setName] = useState(''); const [err, setErr] = useState<string | null>(null);
   return (
     <div className="screen">
       <h1>CrewCode</h1>
       <p className="muted">Build software with your team in a chat. The owner's AI splits the work. Each person sees only their part.</p>
-      <h2>Pick a test identity</h2>
+      {deployed && !session && (
+        signIn
+          ? <a className="chip primary block" style={{ textAlign: 'center', marginTop: 12 }} href="/api/auth/github">Sign in with GitHub</a>
+          : <p className="muted" style={{ marginTop: 12 }}>GitHub sign-in is not configured on this deployment yet.</p>
+      )}
+      {(!deployed || session) && (<>
+      <h2>{deployed ? 'Pick your account' : 'Pick a test identity'}</h2>
       <div className="row wrap">
         {users.map((u) => (
           <button key={u.id} className="chip" onClick={() => pick(u)}>{u.name}</button>
         ))}
       </div>
-      <h2>Or register a name</h2>
+      <h2>{deployed ? 'Or add your name' : 'Or register a name'}</h2>
       <label htmlFor="nm">Your name</label>
       <input id="nm" value={name} onChange={(e) => { setName(e.target.value); setErr(null); }} placeholder="e.g. Asha" autoComplete="off" />
       <Err text={err} />
       <button className="primary block" style={{ marginTop: 12 }} onClick={async () => setErr(await register(name))}>Continue</button>
+      </>)}
     </div>
   );
 }
@@ -1057,4 +1078,4 @@ function DiscoverView() {
       {items.length === 0 && <div className="empty">Nothing matches "{q}".</div>}
     </div>
   );
-      }
+                                                                                                                                }
