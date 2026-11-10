@@ -7,6 +7,8 @@ A chat-first app where a team builds software together. The owner writes a maste
 
 **Simulated:** all AI answers and builds. The skills/MCP catalog uses placeholder names (the local tools themselves really run).
 
+**Real:** accepted work merges into an owner-only `main/` tree (`main/<folder>/<name>`), gated by the contract check; a merged copy the owner edited is never silently overwritten.
+
 **Real:** the preview runs the actual web file with scripts on in an opaque-origin iframe (no access to the app or its storage; network not blocked; not a secure runtime for untrusted code), and local tools run through a genuine MCP stdio server in a permission-restricted process.
 
 **Not built:** real AI providers (Phases 5-6, needs keys the owner has not approved), real storage (Phase 9, Drive wiring waits for sign-in), and authentication (Phase 11, built last). Provider names Gemini, NVIDIA, Grok, Claude and GPT are placeholders and are not verified integrations.
