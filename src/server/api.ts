@@ -163,6 +163,29 @@ export class Api {
       }
       case 'cancelTaskRun': return this.commit(S.cancelTaskRun(st, args.projectId, u, args.taskId));
       case 'cancelPlanning': return this.commit(S.cancelPlanning(st, args.projectId, u));
+      case 'startTaskRun': return this.commit(S.startTaskRun(st, args.projectId, u, args.taskId));
+      case 'applyTaskRun': {
+        // Same ownership rule as startTaskRun: only the assignee (or the owner) may land a result.
+        const p = st.projects.find((x) => x.id === args.projectId);
+        const t = p?.tasks.find((x) => x.id === args.taskId);
+        if (!p || !t) return { ok: false, error: 'Task not found.' };
+        if (t.assigneeId !== u && !isOwner(p, u)) return { ok: false, error: 'That task is not yours.' };
+        const outcome = args.result && typeof args.result === 'object' && args.result.ok === true
+          ? { ok: true as const, message: String(args.result.message ?? ''), files: (args.result.files ?? {}) as Record<string, string> }
+          : { ok: false as const, error: typeof args.result?.error === 'string' ? args.result.error : 'The provider could not be reached.' };
+        const r = S.applyTaskRun(st, args.projectId, args.taskId, outcome, { simulated: args.simulated !== false });
+        const out = this.commit(r); return out.ok && r.ok ? { ok: true, data: { discarded: !!r.discarded } } : out;
+      }
+      case 'startPlanning': return this.commit(S.startPlanning(st, args.projectId, u));
+      case 'applyPlanning': {
+        const p0 = st.projects.find((x) => x.id === args.projectId);
+        if (!p0) return { ok: false, error: 'Project not found.' };
+        if (!isOwner(p0, u)) return { ok: false, error: "Only the owner's AI can assign tasks." };
+        const r = S.applyPlanning(st, args.projectId, args.outcome && typeof args.outcome === 'object' && args.outcome.ok === true
+          ? { ok: true as const, plan: args.outcome.plan }
+          : { ok: false as const, error: typeof args.outcome?.error === 'string' ? args.outcome.error : 'The provider could not be reached.' }, { simulated: args.simulated !== false });
+        const out = this.commit(r); return out.ok && r.ok ? { ok: true, data: { count: r.count ?? 0, discarded: !!r.discarded } } : out;
+      }
       case 'setTaskStatus': return this.commit(S.setTaskStatus(st, args.projectId, u, args.taskId, args.status));
       case 'submitTaskForReview': return this.commit(S.submitTaskForReview(st, args.projectId, u, args.taskId));
       case 'runIntegrationReview': return this.commit(S.runIntegrationReview(st, args.projectId, u, args.taskId));
