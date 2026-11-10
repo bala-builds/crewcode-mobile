@@ -16,6 +16,7 @@ describe('owner to teammate working flow (test identities, simulated AI)', () =>
     expect(call('u-seeta', 'joinProject', { code, interests: ['frontend'] }).ok).toBe(true);
     // owner AI splits work; teammates only
     expect(call('u-ram', 'assignTasks', { projectId: pid }).ok).toBe(true);
+    expect(call('u-ram', 'confirmPlanning', { projectId: pid, accept: true }).ok).toBe(true);
     const sv: any = (call('u-seeta', 'getProject', { projectId: pid }) as any).data;
     const hv: any = (call('u-hanuma', 'getProject', { projectId: pid }) as any).data;
     expect(sv.tasks).toHaveLength(1); expect(hv.tasks).toHaveLength(1);
