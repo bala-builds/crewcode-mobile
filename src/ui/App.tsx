@@ -50,6 +50,77 @@ function canWriteView(v: ProjectView, path: string): boolean {
   return v.tasks.some((t) => path.startsWith(t.folder));
 }
 
+// Desktop rails (structure per the owner's reference layout; theme unchanged).
+// Hidden below 1000px - the mobile layout is untouched. Real data only:
+// projects, task counts/statuses, and team members come from live state.
+function LeftRail({ me, projects, currentPid, go, enter, signOut }: { me: Me; projects: ProjectView[]; currentPid: string | null; go: (s: Screen) => void; enter: (pid: string) => void; signOut: () => void }) {
+  return (
+    <aside className="rail" aria-label="Projects navigation">
+      <div className="rail-brand">CrewCode</div>
+      <button className="rail-nav" onClick={() => go({ name: 'home' })}>Projects</button>
+      <button className="rail-nav" onClick={() => go({ name: 'create' })}>+ Create project</button>
+      <button className="rail-nav" onClick={() => go({ name: 'join' })}>+ Join project</button>
+      <div className="rail-sect">Recent projects</div>
+      {projects.map((pr) => (
+        <button key={pr.id} className={'rail-proj' + (pr.id === currentPid ? ' on' : '')} onClick={() => enter(pr.id)}>
+          <strong>{pr.name}</strong>
+          <span className="muted">{pr.members.length} member{pr.members.length === 1 ? '' : 's'}</span>
+        </button>
+      ))}
+      <div className="rail-user"><span className="avatar" aria-hidden>{me.name.slice(0, 1)}</span><span className="grow">{me.name}</span><button className="small" onClick={signOut}>Switch</button></div>
+    </aside>
+  );
+}
+
+function RightRail({ p, me, nameOf }: { p: ProjectView; me: Me; nameOf: (id: string) => string }) {
+  const counts: Record<string, number> = { done: 0, in_progress: 0, todo: 0 };
+  p.tasks.forEach((t) => { counts[t.status] = (counts[t.status] ?? 0) + 1; });
+  return (
+    <aside className="rrail" aria-label="Project overview">
+      <div className="card">
+        <strong>Project overview</strong>
+        <div className="muted">{p.name}</div>
+        <div className="row wrap" style={{ marginTop: 6 }}>
+          <span className="tag owner">{counts.done} done</span>
+          <span className="tag">{counts.in_progress} in progress</span>
+          <span className="tag">{counts.todo} to do</span>
+        </div>
+      </div>
+      <div className="card">
+        <strong>Tasks</strong>
+        {p.tasks.length === 0 && <div className="muted">No tasks yet.</div>}
+        {p.tasks.slice(0, 6).map((t) => (
+          <div key={t.id} className="row spread" style={{ marginTop: 6 }}>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+            <span className="muted">{nameOf(t.assigneeId)} · {t.status.replace('_', ' ')}</span>
+          </div>
+        ))}
+      </div>
+      <div className="card">
+        <strong>AI & tools</strong>
+        {(() => { const mine = p.members.find((m) => m.userId === me.id); const ai = mine?.ai;
+          return <div className="muted" style={{ marginTop: 6 }}>{ai?.kind === 'own' ? `AI: your ${ai.provider} key` : ai?.kind === 'owner' ? 'AI: owner model' : 'AI: simulated (no key added)'}</div>; })()}
+        {p.skills.length === 0 && <div className="muted">No skills or MCPs added.</div>}
+        {p.skills.map((it: any) => (
+          <div key={it.id} className="row spread" style={{ marginTop: 6 }}>
+            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</span>
+            <span className="muted">{it.kind}{it.hosted ? ' · hosted' : ''}</span>
+          </div>
+        ))}
+      </div>
+      <div className="card">
+        <strong>Team</strong>
+        {p.members.map((m) => (
+          <div key={m.userId} className="row spread" style={{ marginTop: 6 }}>
+            <span>{nameOf(m.userId)}</span>
+            <span className="muted">{m.role}</span>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: number }) {
   const cli = useMemo<ClientData>(() => client ?? new HttpClient('/api'), [client]);
   const [me, setMeState] = useState<Me | null>(() => (hashParams().get('demo') ? null : loadMe()));
@@ -126,7 +197,11 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
           go({ name: 'home' });
           return null;
         }} />}
-      {me && screen.name === 'home' && <Home me={me} projects={projects} refresh={() => refreshFor(me.id)} go={go} enter={enterProject} signOut={() => { setMe(null); setView(null); go({ name: 'welcome' }); }} />}
+      {me && (
+        <div className="shell">
+          <LeftRail me={me} projects={projects} currentPid={screen.name === 'workspace' ? screen.pid : null} go={go} enter={enterProject} signOut={() => { setMe(null); setView(null); go({ name: 'welcome' }); }} />
+          <div className="shell-main">
+      {screen.name === 'home' && <Home me={me} projects={projects} refresh={() => refreshFor(me.id)} go={go} enter={enterProject} signOut={() => { setMe(null); setView(null); go({ name: 'welcome' }); }} />}
       {me && screen.name === 'create' && <Create go={go} create={async (name, prd, ins) => {
         const r = await op(cli, me.id, 'createProject', { name, prd, instructions: ins });
         if (!r.ok) return r.error;
@@ -150,8 +225,11 @@ export function App({ client, pollMs = 4000 }: { client?: ClientData; pollMs?: n
           go({ name: 'workspace', pid: screen.pid });
           return null;
         }} />}
-      {me && screen.name === 'workspace' && <Workspace me={me} view={view} pid={screen.pid} load={() => refreshFor(me.id, screen.pid)} actOp={actOp} go={go} err={err} clearErr={() => setErr(null)} pollMs={pollMs}
+      {screen.name === 'workspace' && <Workspace me={me} view={view} pid={screen.pid} load={() => refreshFor(me.id, screen.pid)} actOp={actOp} go={go} err={err} clearErr={() => setErr(null)} pollMs={pollMs}
         checkVersion={async () => { const r = await op(cli, me.id, 'getVersion'); return r.ok ? (r.data.version as number) : null; }} />}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -183,9 +261,9 @@ function Home({ me, projects, refresh, go, enter, signOut }: { me: Me; projects:
   useEffect(() => { refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <div className="topbar"><div className="title">Hi, {me.name}</div><button className="small" onClick={signOut}>Switch</button></div>
+      <div className="topbar home-top"><div className="title">Hi, {me.name}</div><button className="small" onClick={signOut}>Switch</button></div>
       <div className="screen">
-        <div className="row"><button className="primary grow" onClick={() => go({ name: 'create' })}>Create project</button><button className="grow" onClick={() => go({ name: 'join' })}>Join project</button></div>
+        <div className="row home-actions"><button className="primary grow" onClick={() => go({ name: 'create' })}>Create project</button><button className="grow" onClick={() => go({ name: 'join' })}>Join project</button></div>
         <h2>Your projects</h2>
         {projects.length === 0 && <div className="empty">No projects yet. Create one, or join with a team code.</div>}
         {projects.map((p) => {
@@ -195,7 +273,7 @@ function Home({ me, projects, refresh, go, enter, signOut }: { me: Me; projects:
           return (
             <button key={p.id} className="card block" style={{ textAlign: 'left', display: 'block' }} onClick={() => enter(p.id)}>
               <div className="row spread"><strong style={{ overflowWrap: 'anywhere' }}>{p.name}</strong><span className={'tag ' + m.role}>{m.role}</span></div>
-              <div className="muted">{last ? last.text.slice(0, 80) : 'No activity yet'}</div>
+              <div className="muted">{p.summary || (last ? last.text.slice(0, 80) : 'No description yet')}</div>
             </button>
           );
         })}
@@ -351,7 +429,8 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
   const msgs = owner && activeThread ? p.messages.filter((m) => m.taskId === activeThread) : p.messages;
 
   return (
-    <>
+    <div className="ws">
+    <div className="ws-main">
       <div className="topbar">
         <button className="small" onClick={() => go({ name: 'home' })}>Back</button>
         <div className="title">{p.name}</div>
@@ -427,7 +506,9 @@ function Workspace({ me, view, pid, load, actOp, go, err, clearErr, checkVersion
       </div>
       {sheet === 'team' && <TeamSheet p={p} user={me.id} nameOf={nameOf} actOp={(n, a) => actOp(n, a, pid)} close={() => setSheet(null)} err={err} backupJson={backupJson} setBackupJson={setBackupJson} />}
       {sheet === 'skills' && <SkillsSheet p={p} user={me.id} q={q} setQ={setQ} actOp={(n, a) => actOp(n, a, pid)} pid={pid} close={() => setSheet(null)} err={err} />}
-    </>
+    </div>
+    <RightRail p={p} me={me} nameOf={nameOf} />
+    </div>
   );
 }
 
@@ -439,7 +520,7 @@ function ChatView({ p, user, nameOf, msgs, tasks, owner, thread, setThread, real
       {owner && tasks.length > 0 && (
         <div className="files">
           <button className={'chip small' + (thread === null ? ' on' : '')} onClick={() => setThread(null)}>Project</button>
-          {tasks.map((t: any) => <button key={t.id} className={'chip small' + (thread === t.id ? ' on' : '')} onClick={() => setThread(t.id)}>{nameOf(t.assigneeId)}</button>)}
+          {tasks.map((t: any) => <button key={t.id} title={nameOf(t.assigneeId)} className={'chip small' + (thread === t.id ? ' on' : '')} onClick={() => setThread(t.id)}>{t.title}</button>)}
         </div>
       )}
       {!owner && tasks.length > 1 && <div className="row wrap" style={{ marginBottom: 8 }}>{tasks.map((t: any) => <button key={t.id} className={'chip small' + (thread === t.id ? ' on' : '')} onClick={() => setThread(t.id)}>{t.folder}</button>)}</div>}
@@ -769,4 +850,4 @@ function SkillsSheet({ p, user, q, setQ, actOp, pid, close, err }: { p: ProjectV
       <div className="muted">{CATALOG.length} items in the starter set.</div>
     </div></div>
   );
-}
+            }
