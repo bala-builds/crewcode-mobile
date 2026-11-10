@@ -186,3 +186,24 @@ describe('merge review (PRD F6, acceptance 9)', () => {
     expect(taskOf(state, 'u-seeta').review?.state).toBe('accepted');
   });
 });
+
+describe('dependency ordering at merge', () => {
+  it('a feature whose dependency is not merged cannot be merged first', () => {
+    let { state, pid, taskOf } = setup();
+    // settings/ depends on home/: merge order is enforced at acceptance.
+    const sid = taskOf(state, 'u-hanuma').id;
+    const hid = taskOf(state, 'u-seeta').id;
+    state = { ...state, projects: state.projects.map((p) => p.id === pid ? { ...p, tasks: p.tasks.map((t) => t.id === sid ? { ...t, deps: ['home/'] } : t) } : p) };
+    for (const [uid, id] of [['u-seeta', hid], ['u-hanuma', sid]] as const) {
+      state = ok(setTaskStatus(state, pid, uid, id, 'done')).state;
+      state = ok(submitTaskForReview(state, pid, uid, id)).state;
+      state = ok(runIntegrationReview(state, pid, 'u-ram', id)).state;
+    }
+    const blocked = acceptTaskMerge(state, pid, 'u-ram', sid);
+    expect(blocked.ok).toBe(false);
+    expect((blocked as { error: string }).error).toContain('Depends on home/');
+    state = ok(acceptTaskMerge(state, pid, 'u-ram', hid)).state;
+    state = ok(acceptTaskMerge(state, pid, 'u-ram', sid)).state;
+    expect(taskOf(state, 'u-hanuma').review?.state).toBe('accepted');
+  });
+});
