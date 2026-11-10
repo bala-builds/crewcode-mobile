@@ -7,6 +7,19 @@ import crypto from 'node:crypto';
 
 const b64u = (s: string | Buffer) => Buffer.from(s).toString('base64url');
 
+/**
+ * The app private key arrives as CREWCODE_GITHUB_APP_PRIVATE_KEY (raw PEM, as
+ * pasted from the .pem download; env UIs often keep literal "\n" sequences)
+ * or the base64 form CREWCODE_GITHUB_APP_PRIVATE_KEY_B64. A value without a
+ * PEM header is treated as base64.
+ */
+export function resolvePrivateKeyPem(env: Record<string, string | undefined>): string | null {
+  const v = (env.CREWCODE_GITHUB_APP_PRIVATE_KEY ?? env.CREWCODE_GITHUB_APP_PRIVATE_KEY_B64)?.trim();
+  if (!v) return null;
+  const unescaped = v.replace(/\\n/g, '\n');
+  return unescaped.includes('-----BEGIN') ? unescaped : Buffer.from(unescaped, 'base64').toString('utf8');
+}
+
 export function appJwt(appId: string, privateKeyPem: string, now = Date.now()): string {
   const iat = Math.floor(now / 1000) - 60; // clock-skew allowance
   const payload = { iat, exp: iat + 600, iss: appId };
