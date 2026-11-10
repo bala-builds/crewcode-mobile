@@ -209,7 +209,7 @@ export function applyPlanning(state: AppState, projectId: string, outcome: PlanO
   // task exists. confirmPlanning is the only path that creates tasks from a proposal.
   p.proposedPlan = outcome.plan;
   const nm = (id: string) => next.users.find((u) => u.id === id)?.name ?? id;
-  push({ authorId: 'ai', taskId: null, kind: 'ai_plan', simulated: opts.simulated !== false, text: ((opts.simulated ?? true) ? 'Proposed plan (simulated) - waiting for the owner:\n' : 'Proposed plan - waiting for the owner:\n') + outcome.plan.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
+  push({ authorId: 'ai', taskId: null, kind: 'ai_plan', simulated: opts.simulated !== false, text: ((opts.simulated ?? true) ? 'Proposed plan (simulated) - waiting for the owner:\n' : 'Proposed plan - waiting for the owner:\n') + outcome.plan.map((t) => `- ${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
   return { ok: true, state: next, count: outcome.plan.length };
 }
 
@@ -238,7 +238,7 @@ export function confirmPlanning(state: AppState, projectId: string, userId: stri
   p.proposedPlan = undefined;
   p.tasks = toTasks(adjusted, () => newId('t'));
   const nm = (id: string) => next.users.find((u) => u.id === id)?.name ?? id;
-  push({ authorId: 'ai', taskId: null, kind: 'ai_plan', simulated: false, text: 'Plan approved by the owner:\n' + p.tasks.map((t) => `${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
+  push({ authorId: 'ai', taskId: null, kind: 'ai_plan', simulated: false, text: 'Plan approved by the owner:\n' + p.tasks.map((t) => `- ${t.folder} - ${t.title} (${nm(t.assigneeId)})`).join('\n') });
   // Contract folder ownership is updated by the owner's AI, not by teammates.
   p.files['CONTRACT.md'] = defaultContract(p.name, p.tasks.map((t) => ({ folder: t.folder, owner: nm(t.assigneeId) })));
   if (!p.fileRevs) p.fileRevs = {};
@@ -374,7 +374,7 @@ export function applyTaskRun(
     reopenAcceptedReviews(p, path);
   }
   t.status = 'in_progress'; t.run = 'idle'; delete t.runError;
-  push({ authorId: 'ai', taskId, kind: 'ai_build', simulated: opts.simulated !== false, text: (opts.simulated === false ? '' : 'Simulated build. ') + result.message, files: written, diff });
+  push({ authorId: 'ai', taskId, kind: 'ai_build', simulated: opts.simulated !== false, text: (opts.simulated === false || result.message.toLowerCase().includes('simulated') ? '' : 'Simulated build. ') + result.message, files: written, diff });
   return { ok: true, state: next };
 }
 
@@ -588,4 +588,4 @@ export function save(state: AppState, storage: Pick<Storage, 'setItem'> = localS
 export function load(storage: Pick<Storage, 'getItem'> = localStorage): AppState {
   try { const raw = storage.getItem(KEY); if (raw) { const s = JSON.parse(raw) as AppState; if (Array.isArray(s.projects) && Array.isArray(s.users)) return s; } } catch { /* fall through */ }
   return seedState();
-}
+      }
