@@ -11,14 +11,18 @@ settings/ (seed PRD feature list). Every project action goes through the real UI
   then creates the five fixture backend files from `e2e/fixtures/backend/` one by one in
   `home/` with the Code tab's New file affordance (her feature owns its frontend and its
   backend together), fills each in the editor, marks done and submits;
-- Hanuma runs a simulated build in `settings/` (full-stack placeholder), marks done and
-  submits;
+- Hanuma runs a simulated build in `settings/`, then creates the five fixture settings
+  service files from `e2e/fixtures/settings/` one by one in `settings/` with New file,
+  marks done and submits;
 - the owner waits until both submissions are visible, runs the contract check on each
   folder and merges each into `main/`;
-- the script verifies the physical `main/` tree byte-matches the fixtures, extracts it,
-  boots the merged `main/home/` backend and serves the merged `main/home/index.html` with
-  an `/api` proxy, then adds a habit through the merged page and confirms the merged
-  backend stored it.
+- the script verifies the physical `main/` tree byte-matches BOTH feature fixtures,
+  extracts it, boots the merged `main/home/` backend AND the merged `main/settings/`
+  backend, and serves the merged `main/home/index.html` with an `/api` proxy that routes
+  `/api/v1/settings` to the settings service. The merged page reads live from both merged
+  feature backends: it shows the settings display name served by the settings feature and
+  adds a habit stored by the home feature - one integrated journey across two merged
+  features, not a single-folder demo.
 
 No AI calls, no Drive, no external services. The fixture backend is the ASCII-sanitized
 copy of the backend generated in the earlier Groq live-call test (emoji/non-ASCII comment
@@ -44,7 +48,9 @@ and writes screenshots to `shots/http-e2e/34*.png`.
   as evidence).
 - 34c: both folders merged.
 - 34f: the merged app running; "Drink water" added through the merged frontend and read
-  back from the merged backend (GET /api/v1/habits returned exactly that one habit).
+  back from the merged home backend (GET /api/v1/habits returned exactly that one habit),
+  and the page's settings line is served by the merged settings backend
+  (GET /api/v1/settings returned the fixture display name).
 
 Honest scope: the contract check verifies shared names only; it does not verify interface
 compatibility across files. The combined runtime above is the compatibility evidence for
